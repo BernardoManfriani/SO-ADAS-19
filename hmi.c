@@ -1,8 +1,7 @@
 #include<stdio.h>
 #include<stdlib.h>
-#include <string.h>
+#include<string.h>
 #include<unistd.h>
-#include<sys/types.h>
 
 pid_t pid;
 
@@ -46,7 +45,7 @@ void start(){
 				} else {
 					printf("Comando non ammesso.\n\n");
 				}
-			} else {    // Una volta avviata la macchina, concesso solo parcheggio
+			} else {    // Una volta avviata la macchina, concesso solo parcheggio -- PENSO..
 				if(strcmp(input, "PARCHEGGIO\n") == 0) {
 					printf("Sto fermando il veicolo...\n");
 					//kill(ecuPid, SIGPARK);
