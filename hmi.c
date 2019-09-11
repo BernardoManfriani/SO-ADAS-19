@@ -3,7 +3,13 @@
 #include<string.h>
 #include<unistd.h>
 
-pid_t pid;
+#include<signal.h>
+
+#define SIGSTART SIGUSR1
+#define READ 0
+#define WRITE 1
+
+pid_t ecuPid;
 
 void start();
 
@@ -12,12 +18,12 @@ int main(int argc, char *argv[]) {
 		printf("Specifica se vuoi un avvio NORMALE o ARTIFICIALE\n");
 		exit(1);
 	}
-    pid = fork();
-    if(pid < 0) {
+    ecuPid = fork();
+    if(ecuPid < 0) {
         perror("fork");
         exit(1);
     }
-    if(pid == 0) {  // ECU child process
+    if(ecuPid == 0) {  // ECU child process
         setpgid(0,0);
         argv[0] = "./ecu";
         execv(argv[0], argv);
@@ -38,7 +44,7 @@ void start(){
 			if((started) == 0) {
 				if(strcmp(input, "INIZIO\n") == 0) {
 					printf("Veicolo avviato\n");
-					//kill(ecuPid, SIGSTART);
+					kill(ecuPid, SIGSTART);
 					started = 1;
 				} else if (strcmp(input, "PARCHEGGIO\n") == 0) {
 					printf("Prima di poter parcheggiare devi avviare il veicolo.\nDigita INIZIO per avviare il veicolo.\n\n");
@@ -48,7 +54,7 @@ void start(){
 			} else {    // Una volta avviata la macchina, concesso solo parcheggio -- PENSO..
 				if(strcmp(input, "PARCHEGGIO\n") == 0) {
 					printf("Sto fermando il veicolo...\n");
-					//kill(ecuPid, SIGPARK);
+					// kill(ecuPid, SIGPARK);	// durante parcheggio kill ecu process 
 					started = 0;
 				} else {
 					printf("Comando non ammesso. \nDigita PARCHEGGIO per parcheggiare il veicolo\n\n");

@@ -11,42 +11,48 @@
 #define DEFAULT_PROTOCOL 0
 
 int currentSpeed;
+int socketFd;
 
-void createClient();
+int createClient();
+void closeClient(int s);
 void writeShit(int s);
+int connectClient(char* socketName);
 
 int main() {
     currentSpeed = 0;
     printf("%s\n", "frontWindShield attivo");
 
-    createClient();
+    socketFd = connectClient("socket");
+
+    writeShit(socketFd); /* Read the recipe */
+
+    closeClient(socketFd);
 
     return 0;
 }
 
-void createClient() {
-    int socketFd, serverLen, result;
-    struct sockaddr_un serverUNIXAddress;
-    struct sockaddr* serverSockAddrPtr;
+int connectClient(char *socketName){
+	int socketFd, serverLen;
+	struct sockaddr_un serverUNIXAddress;
+	struct sockaddr* serverSockAddrPtr;
 
-    serverSockAddrPtr = (struct sockaddr*) &serverUNIXAddress;
-    serverLen = sizeof (serverUNIXAddress);
+	serverSockAddrPtr = (struct sockaddr*) &serverUNIXAddress;
+	serverLen = sizeof (serverUNIXAddress);
+	socketFd = socket (AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL);
+	serverUNIXAddress.sun_family = AF_UNIX; /* Server domain */
+	strcpy (serverUNIXAddress.sun_path, socketName);/*Server name*/
+	int result = connect(socketFd, serverSockAddrPtr, serverLen);
+ 	if(result < 0){
+ 		return result;
+ 	}
 
-    socketFd = socket (AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL);
-    serverUNIXAddress.sun_family = AF_UNIX; /* Server domain */
-    strcpy (serverUNIXAddress.sun_path, "socket");/*Server name*/
-
-    do { /* Loop until a connection is made with the server */
-        result = connect (socketFd, serverSockAddrPtr, serverLen);
-        if (result == -1) sleep (1); /* Wait and then try again */
-    } while (result == -1);
     printf("%s\n", "CONNESSO");
+ 	return socketFd;
+}
 
-    for(int i = 0; i<5; i++){
-        writeShit(socketFd); /* Read the recipe */
-    }
+void closeClient(int socketFd) {
+    printf("%s\n", "CHIUDO CONNESSIONE");
     close (socketFd); /* Close the socket */
-    exit(0); /* EXIT_SUCCESS */ 
 }
 
 void writeShit (int socketFd) {

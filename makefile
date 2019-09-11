@@ -7,3 +7,4 @@ allFiles:
 	gcc hmi.c -o hmi
 	gcc ecu.c -o ecu
 	gcc frontWindshieldCamera.c -o fwc
+	gcc throttleControl.c -o tc

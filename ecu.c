@@ -3,6 +3,8 @@
 #include<string.h>
 #include<unistd.h>
 
+#include<signal.h>
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h> /* For AFUNIX sockets */
@@ -14,6 +16,8 @@
 #define SERVER_SOCKET_NUMBER 5
 #define CLIENT_SOCKET_NUMBER 3
 #define MAX_DATA_SIZE 100
+#define READ 0
+#define WRITE 1
 
 // char sockets_name[MAX_SOCKET_NAME_SIZE]={
 // "ffrSock",
@@ -21,33 +25,43 @@
 
 int currentSpeed;
 
+
+pid_t pidTc;
 pid_t pidFcw;
+
+int tcSocketFd;
 
 
 void createServer();
+int connectClient(char* socketName);
 int readFromSocket (int );
 int readLines (int x, char *y);
+void creaAttuatori();
+void creaSensori();
+
+void writeShit (int socketFd);
+
+void startEcuSigHandler(int );
 
 int main() {
     currentSpeed = 0;
-    printf("%s\n", "ECU avviata");
 
-    char *argv[6]; 
-    pidFcw = fork();
-    if(pidFcw < 0) {
-        perror("fork");
-        exit(1);
-    }
-    if(pidFcw == 0) {  // fwc child process
-        argv[0] = "./fwc";
-        execv(argv[0], argv);
-    } else {
-        printf("%s", "creoserver\n");
-        createServer();
-        
+    signal(SIGUSR1, startEcuSigHandler);
+
+
+    while(1){
     }
 
     return 0;
+}
+
+void startEcuSigHandler(int x) {
+    signal(SIGUSR1, startEcuSigHandler);
+    printf("%s\n", "ECU avviata");
+
+    creaAttuatori();
+    //creaSensori();
+
 }
 
 void createServer() {
@@ -74,14 +88,16 @@ void createServer() {
 
     while (1) {/* Loop forever */ /* Accept a client connection */
         clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);
-        if (fork () == 0) { /* Create child to send receipe */
-            while(1) {
+
+        if (fork () == 0) { /* Create child read ecu client */
+            //while(1) {
                 readFromSocket (clientFd); /* Send data */
-                sleep(1);
-            }
+                //sleep(1);
+            //}
             close (clientFd); /* Close the socket */
             exit (0); /* Terminate */
-        } else {
+        } 
+        else {
             close (clientFd); /* Close the client descriptor */
             exit (0);
         }
@@ -91,23 +107,80 @@ void createServer() {
 int readFromSocket (int fd) {
     char str[100];
     while (readLines (fd, str)); /* Read lines until end-of-input */
-    printf ("%s\n", str); /* Echo line from socket */
+    printf ("%s\n", str);
 }
-
-// int readLine (int fd, char *str) {
-//     /* Read a single ’\0’-terminated line into str from fd */
-//     int n;
-//     do { /* Read characters until ’\0’ or end-of-input */
-//         n = read (fd, str, 1); /* Read one character */
-//     } while (n > 0 && *str++ != '\0');
-
-//     return (n > 0); 
-// }
 
 int readLines (int fd, char *str) {
 	int n;
-	do {
-		n = read(fd, str, 1);
+	do { /* Read characters until ’\0’ or end-of-input */
+		n = read(fd, str, 1); /* Read one character */
 	} while (n > 0 && *str++ != '\0');
     return (n > 0);
+}
+
+void creaAttuatori() {
+    char *argv[6]; 
+    pidTc = fork();
+    if(pidTc < 0) {
+        perror("fork");
+        exit(0);
+    }
+    if(pidTc == 0) {  // throttle control child process
+        argv[0] = "./tc";
+        execv(argv[0], argv);
+    } else {
+        printf("%s", "creoserver\n");
+        //createServer();
+        tcSocketFd = connectClient("tcSocket");
+        sleep(5);
+        
+        writeShit(tcSocketFd);
+        exit(0);
+    }
+}
+
+void creaSensori() {
+    char *argv[6]; 
+    pidFcw = fork();
+    if(pidFcw < 0) {
+        perror("fork");
+        exit(1);
+    }
+    if(pidFcw == 0) {  // fwc child process
+        argv[0] = "./fwc";
+        execv(argv[0], argv);
+    } else {
+        printf("%s", "creoserver\n");
+    }
+}
+
+int connectClient(char *socketName){
+	int socketFd, serverLen;
+	struct sockaddr_un serverUNIXAddress;
+	struct sockaddr* serverSockAddrPtr;
+
+	serverSockAddrPtr = (struct sockaddr*) &serverUNIXAddress;
+	serverLen = sizeof (serverUNIXAddress);
+	socketFd = socket (AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL);
+	serverUNIXAddress.sun_family = AF_UNIX; /* Server domain */
+	strcpy (serverUNIXAddress.sun_path, socketName);/*Server name*/
+	// int result = connect(socketFd, serverSockAddrPtr, serverLen);
+ 	// if(result < 0){
+ 	// 	return result;
+ 	// }
+     int result;
+     do { /* Loop until a connection is made with the server */
+        result = connect(socketFd, serverSockAddrPtr, serverLen);
+        if (result == -1) sleep (1); /* Wait and then try again */
+    } while (result == -1);
+
+    printf("Ecu connessa con %s\n", socketName);
+ 	return socketFd;
+}
+
+void writeShit (int socketFd) {
+    char *s = "SHIT BRODER";
+    write(socketFd, s, strlen (s) + 1);
+
+    printf("SCRIVO SU SOCKET\n");
 }
