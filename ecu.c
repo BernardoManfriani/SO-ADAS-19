@@ -59,8 +59,8 @@ void startEcuSigHandler(int x) {
     signal(SIGUSR1, startEcuSigHandler);
     printf("%s\n", "ECU avviata");
 
-    creaAttuatori();
-    //creaSensori();
+    // creaAttuatori();
+    creaSensori();
 
 }
 
@@ -89,28 +89,45 @@ void createServer() {
     while (1) {/* Loop forever */ /* Accept a client connection */
         clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);
 
-        if (fork () == 0) { /* Create child read ecu client */
-            //while(1) {
-                readFromSocket (clientFd); /* Send data */
-                //sleep(1);
-            //}
-            close (clientFd); /* Close the socket */
-            exit (0); /* Terminate */
-        } 
-        else {
-            close (clientFd); /* Close the client descriptor */
-            exit (0);
-        }
+        // if (fork () == 0) { /* Create child read ecu client */
+        //     //while(1) {
+        //         readFromSocket (clientFd); /* Send data */
+        //         //sleep(1);
+        //     //}
+        //     close (clientFd); /* Close the socket */
+        //     exit (0); /* Terminate */
+        // } 
+        // else {
+        //     close (clientFd); /* Close the client descriptor */
+        //     exit (0);
+        // }
+
+        char data[30];
+
+                if(fork () == 0) { /* Create child read ECU client */
+                    printf("aspetto di leggere qualcosa da socket\n");
+                    while(readLines(clientFd, data)) {
+                        printf("%s", data);
+                    }
+
+                    close (clientFd); /* Close the socket */
+                    exit (0); /* Terminate */
+                } else {
+                    close (clientFd); /* Close the client descriptor */
+                    exit (0);
+                }
     }
+
+
 }
 
-int readFromSocket (int fd) {
+int readFromSocket(int fd) {
     char str[100];
     while (readLines (fd, str)); /* Read lines until end-of-input */
     printf ("%s\n", str);
 }
 
-int readLines (int fd, char *str) {
+int readLines(int fd, char *str) {
 	int n;
 	do { /* Read characters until ’\0’ or end-of-input */
 		n = read(fd, str, 1); /* Read one character */
@@ -130,8 +147,7 @@ void creaAttuatori() {
         execv(argv[0], argv);
     } else {
         printf("%s", "creoserver\n");
-        //createServer();
-        tcSocketFd = connectClient("tcSocket");
+        tcSocketFd = connectClient("tcSocket");     // create ecu client
         sleep(5);
         
         writeShit(tcSocketFd);
@@ -149,8 +165,11 @@ void creaSensori() {
     if(pidFcw == 0) {  // fwc child process
         argv[0] = "./fwc";
         execv(argv[0], argv);
+        exit(0);
     } else {
         printf("%s", "creoserver\n");
+        // createServer();
+        exit(0);
     }
 }
 

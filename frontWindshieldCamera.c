@@ -12,21 +12,31 @@
 
 int currentSpeed;
 int socketFd;
+FILE *readFd;
+FILE *logFd;
 
 int createClient();
 void closeClient(int s);
-void writeShit(int s);
+void writeOnSocket(int s, char *data);
 int connectClient(char* socketName);
+void openFile(char filename[], char mode[], FILE **filePointer);
+void readFile(FILE* fd,FILE* fc);
 
 int main() {
     currentSpeed = 0;
     printf("%s\n", "frontWindShield attivo");
 
-    socketFd = connectClient("socket");
+    // socketFd = connectClient("socket");
 
-    writeShit(socketFd); /* Read the recipe */
+    openFile("frontCamera.data","r", &readFd);
+  	openFile("frontCamera.log","w", &logFd);
 
-    closeClient(socketFd);
+	printf("LEGGO read %d", readFd);
+	printf("LEGGO log %d", logFd);
+
+    readFile(readFd, logFd);
+
+    // closeClient(socketFd);
 
     return 0;
 }
@@ -55,9 +65,29 @@ void closeClient(int socketFd) {
     close (socketFd); /* Close the socket */
 }
 
-void writeShit (int socketFd) {
-    char *s = "SHIT BRODER";
+void writeOnSocket (int socketFd, char *data) {
+    write(socketFd, data, strlen (data) + 1);
+}
 
-    //sleep(1);
-    write(socketFd, s, strlen (s) + 1);
+void readFile(FILE* fd,FILE* fc){
+	char buf[10];
+  	char *res;
+  	while(1) {
+   		res=fgets(buf, 10, fd);
+
+   		if(res==NULL )
+    		break;
+
+    	fprintf(fc, "%s", buf);		// scrivo su file .log
+    	// writeOnSocket(socketFd, buf);		// scrivo su socket fwc <--> ecu
+ 		sleep(1);
+  	}
+}
+
+void openFile(char filename[], char mode[], FILE **filePointer) {
+	*filePointer = fopen(filename, mode);
+	if(*filePointer == NULL) {
+		printf("Errore nell'apertura del file");
+		exit(1);
+	}
 }

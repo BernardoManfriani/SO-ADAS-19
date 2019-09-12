@@ -30,14 +30,13 @@ int readLines (int x, char *y);
 void manageSocketData(char *data);
 void writeLog();
 
+void lettorePipe();
 
-void sigTermHandler();
+// void sigTermHandler();
 
 void openFile(char filename[], char mode[], FILE **filePointer);
 
 int main() {
-	pipe(pipeFd);		// FUNZIONA ANCHE SENZA RIGA - PERCHE?
-
     printf("%s\n", "---- throttle control attivo --------");
 
 	status = pipe(pipeFd);
@@ -45,24 +44,25 @@ int main() {
 		printf("Pipe error\n");
 		exit(1);
 	}
-	fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);	//rende la read non bloccante ----- ALTRIMENTI NON FUNZIONA
+	// fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);	//rende la read non bloccante
 
 	pid = fork();
-	if(pid == 0) {      // child process writer on throttle.log file
+	if(pid == 0) {			// child process writer on throttle.log file
 		printf("\nchild process writer on throttle.log file RUNNING\n");
 		close(pipeFd[WRITE]);
 		writeLog();
 		close(pipeFd[READ]);
 		return 0;
-	} else {                // father process listener on socket
+	} else {				// father process listener on socket
 		printf("\nfather process listener on socket RUNNING\n");
 		// signal(SIGTERM, sigTermHandler); //NON SO COSA FA - PUNTO AVANZATO PROGETTO
 		close(pipeFd[READ]); 
         createServer();
 		close(pipeFd[WRITE]);		// NECESSARIO ?
 	}
+	printf("FINE\n");
+	exit(0);
 }
-
 
 void createServer() {
     int serverFd, clientFd, serverLen, clientLen;
@@ -72,7 +72,7 @@ void createServer() {
     struct sockaddr* clientSockAddrPtr;/*Ptr to client address*/
 
     /* Ignore death-of-child signals to prevent zombies */
-    //signal (SIGCHLD, SIG_IGN);
+    signal (SIGCHLD, SIG_IGN);
 
     serverSockAddrPtr = (struct sockaddr*) &serverUNIXAddress;
     serverLen = sizeof (serverUNIXAddress);
@@ -122,29 +122,26 @@ int readLines(int fd, char *str) {
 
 void manageSocketData(char *data) {
     printf("LEGGO DA SOCKET = %s -> SCRIVO SU PIPE\n", data);
-	write(pipeFd[WRITE], data, 30);     // write on pipe
+	int figa = write(pipeFd[WRITE], data, 30);     // write on pipe
+	printf("\n%d\n", figa);
 }
 
 void writeLog() {
 	openFile("throttle.log", "w", &fileLog);
-	char *socketData;
 
-	int byteLettiPipe, byteScrittiLog;
+	int bytesRead;
+	char socketData [30];
+	// char *socketData;		// ----------------- PERCHE CON QUESTO NON FUNZIONA -----------------	//
 	while(1) {
-		sleep(1);
-		byteLettiPipe = read(pipeFd[0], socketData, 30);
-		printf("leggo da pipe %s ---> %d bytes\n", socketData, byteLettiPipe);
-
-		// byteScrittiLog = fprintf(fileLog, socketData);
-		// printf("SCRIVO SU FILE %d\n", byteScrittiLog);
-
-        if(byteLettiPipe > 0) {
-			printf("sborro");
+		bytesRead = read (pipeFd[READ], socketData, 30);
+		if(bytesRead != 0){
+			printf ("Read %d bytes: %s\n", bytesRead, socketData);
 		    fprintf(fileLog, socketData);
-			fflush(fileLog);
-			// exit(0);
-        }
+			fflush(fileLog);		// SE COMMENTO NON SCRIVE SU FILE-- CAZZO PERCHEEEEE TROIO
+		}
+		sleep(1);
 	}
+	
 }
 
 void openFile(char filename[], char mode[], FILE **filePointer) {
@@ -157,7 +154,7 @@ void openFile(char filename[], char mode[], FILE **filePointer) {
 
 
 void sigTermHandler() {
-	kill(pid, SIGTERM);
+	// kill(pid, SIGTERM);
 	exit(0);
 	
 }
