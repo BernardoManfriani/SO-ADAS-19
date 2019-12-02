@@ -5,11 +5,13 @@
 
 #include<signal.h>
 
+#include <sys/wait.h>
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#include <fcntl.h>
+//#include <fcntl.h>
 
 #include "socketManager.h"
 #include "fileManager.h"
@@ -36,7 +38,9 @@ void lettorePipe();
 int main() {
     printf("ATTUATORE tc: attivo\n");
 
-    initPipe();
+    createServer();
+
+    /*initPipe();
 
 	// fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);	//rende la read non bloccante
 
@@ -51,8 +55,8 @@ int main() {
 		close(pipeFd[READ]); 
         createServer();
 		close(pipeFd[WRITE]);
-	}
-	exit(0);
+	}*/
+	return 0;
 }
 
 void createServer() {
@@ -63,7 +67,7 @@ void createServer() {
     struct sockaddr* clientSockAddrPtr;/*Ptr to client address*/
 
     /* Ignore death-of-child signals to prevent zombies */
-    signal (SIGCHLD, SIG_IGN);
+    //signal (SIGCHLD, SIG_IGN);								// look: che cazzo fa questa riga?
 
     serverSockAddrPtr = (struct sockaddr*) &serverUNIXAddress;
     serverLen = sizeof (serverUNIXAddress);
@@ -75,30 +79,26 @@ void createServer() {
     strcpy (serverUNIXAddress.sun_path, "tcSocket"); /* Set name */
     unlink ("tcSocket"); /* Remove file if it already exists */
     bind (serverFd, serverSockAddrPtr, serverLen);/*Create file*/
-    listen (serverFd, 5); /* Maximum pending connection length */
+    listen (serverFd, 1); /* Maximum pending connection length */
 
     while (1) {/* Loop forever */ /* Accept a client connection */
-		printf("ATTUATORE tc: SERVER-wait client\n");
+		printf("ATTUATORE-SERVER tc: wait client\n");
 
 		clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
-		printf("ATTUATORE tc: SERVER-accept client\n");
+		printf("ATTUATORE-SERVER tc: accept client\n");
 
         char data[30];
 
-        if(fork () == 0) { /* Create child read ECU client */
-			printf("ATTUATORE tc: SERVER-wait to read something\n");
-            while(readSocket(clientFd, data)) {
-                manageSocketData(data);
-            }
-
-			printf("ATTUATORE tc: SERVER-end to read socket\n");
-
-            close (clientFd); /* Close the socket */
-            exit (0); /* Terminate */
-        } else {
-            close (clientFd); /* Close the client descriptor */
-            exit (0);				// look: e' giusto fare un exit?
+		printf("ATTUATORE-SERVER tc: wait to read something\n");
+        while(readSocket(clientFd, data)) {
+            //manageSocketData(data);
+            printf("ATTUATORE-SERVER tc: leggo = '%s'\n", data);
         }
+
+		printf("ATTUATORE-SERVER tc: end to read socket\n");
+
+        close (clientFd); /* Close the socket */
+        exit (0); /* Terminate */
     }
 }
 
@@ -124,8 +124,6 @@ void writeLog() {
 	}
 	
 }
-
-
 
 void initPipe() {
 	status = pipe(pipeFd);

@@ -9,13 +9,7 @@
 #include <sys/un.h>
 
 int main(){
-	int i=0;
-	while(1){
-		sleep(1);
-		printf("\nI'm forward dacing radar \n");
-		i++;
-		if(i>4){
-			break;
-		}
-	}
+	printf("SENSORE ffr: attivo\n");
+
+	return 0;
 }

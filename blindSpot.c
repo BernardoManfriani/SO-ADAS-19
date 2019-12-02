@@ -9,13 +9,7 @@
 #include <sys/un.h>
 
 int main(){
-	int i=0;
-	while(1){
-		sleep(1);
-		printf("\nI'm blind spot \n");
-		i++;
-		if(i>4){
-			break;
-		}
-	}
+	printf("SENSORE bs: attivo\n");
+
+	return 0;
 }
