@@ -17,3 +17,5 @@ allFiles:
 	gcc parkAssist.c socketManager.c -o pa
 	gcc surroundViewCameras.c socketManager.c -o svc
 	gcc throttleControl.c socketManager.c fileManager.c -o tc
+	gcc brakeByWire.c socketManager.c fileManager.c -o bbw
+	gcc steerByWire.c socketManager.c fileManager.c -o sbw
