@@ -1,7 +1,7 @@
 #include<stdio.h>
 #include<stdlib.h>
-#include<string.h>
 #include<unistd.h>
+#include<string.h>
 
 #include<signal.h>
 
@@ -11,45 +11,75 @@
 #include <sys/socket.h>
 #include <sys/un.h> /* For AFUNIX sockets */
 
-#define NAME "socket"
+#include "socketManager.h"
+
+#define SIGSTART SIGUSR1
+#define SIGDANGER SIGUSR2
 
 #define DEFAULT_PROTOCOL 0
-#define MAX_SOCKET_NAME_SIZE 5
-#define SERVER_SOCKET_NUMBER 5
-#define CLIENT_SOCKET_NUMBER 3
-#define MAX_DATA_SIZE 100
+#define NUMERO_SENSORI 1
+//#define NUMERO_ATTUATORI 3
+#define MAX_DATA_SIZE 20
 #define READ 0
 #define WRITE 1
 
-// char sockets_name[MAX_SOCKET_NAME_SIZE]={
-// "ffrSock",
-// };
-
 int currentSpeed;
 
+// PID ATTUATORI
+pid_t pidTc, pidBbw, pidSbw;
 
-pid_t pidTc;
-pid_t pidFcw;
+// PID SENSORI - look: non considero pidSvc, pidPa perchè processi attivati al bisogno e non all'avvio del sistema (?)
+pid_t pidFwc, pidFfr, pidBs;
 
-int tcSocketFd;
+// PID ECU-CLIENTS	-	clienti del socket aperto con gli attuatori
+pid_t pidEcuClientFwcManager, pidEcuClientBbw, pidEcuClientSbw;
 
+// PIPE - da ECU_SERVER a ECU-CLIENT
+int pipe_fwc_data[2];
 
-void createServer();
-int connectClient(char* socketName);
-int readFromSocket (int );
-int readLines (int x, char *y);
-void creaAttuatori();
-void creaSensori();
+// PID ECU-SERVERS
+pid_t pidEcuServers[NUMERO_SENSORI];
 
-void writeShit (int socketFd);
+// Strutture dati server-client
+int serverLen, clientLen;
+struct sockaddr_un serverUNIXAddress; /*Server address */
+struct sockaddr* serverSockAddrPtr; /*Ptr to server address*/
+struct sockaddr_un clientUNIXAddress; /*Client address */
+struct sockaddr* clientSockAddrPtr;/*Ptr to client address*/
+
+// Nomi socket sensori
+const char *nomeSocketSensori[NUMERO_SENSORI] = {
+	"fwcSocket"
+};
+
+// FD SOCKET ATTUATORI
+int tcSocketFd, bbwSocketFd, sbwSocketFd;
+
+// FD SOCKET SENSORI
+int fdSocketSensori[NUMERO_SENSORI];
 
 void startEcuSigHandler(int );
+void init();
 void start();
 
-int main() {
-	currentSpeed = 0;
+void creaComponente(pid_t pidSens, char *argv[]);
 
-	signal(SIGUSR1, startEcuSigHandler);
+void creaSensori();
+void creaServer();
+
+void creaEcuClients();
+void fwcDataManager(pid_t );
+
+void creaAttuatori();
+
+void processFwcData(char *data);
+
+int main() {
+
+	signal(SIGSTART, startEcuSigHandler);
+
+	init();			// look: si mette qui per guadagnare un po di tempo
+
 	pause();
 
 	start();
@@ -57,153 +87,208 @@ int main() {
 	return 0;
 }
 
-void start() {
-	creaSensori();                  // crea ECU-SERVER
-	//creaAttuatori();
-}
+void init() {		// inizializza le pipe------- look: SBAGLIATO facendo cosi tutti i processi hanno tutte le pipe aperte
+					// Pero se non lo metto in start ECU SERVER e ECU CLIENT non hanno la struttura dati in comune
+					// Quindi se si inizializzano le pipe qui, bisogna preoccuparci nei vari processi di chiudere le pipe che non si usano 
 
-void startEcuSigHandler(int x) {
-	//signal(SIGUSR1, startEcuSigHandler);      // reset handler ?!
-	printf("%s\n", "signal arrivata -> ECU STARTED");
-}
+	currentSpeed = 0;
 
-void creaSensori() {
-	char *argv[] = {"./fwc", NULL}; 
-	pidFcw = fork();
-	if(pidFcw < 0) {
-		perror("fork");
-		exit(1);
-	}
-	if(pidFcw == 0) {               // fwc child process
-		execv(argv[0], argv);
-		exit(0);
-		printf("1\n");
-	} else {
-		printf("%s", "creoserver\n");
-		createServer();
-		wait(NULL);
-		printf("2\n");
-	}
-}
-
-void creaAttuatori() {
-	char *argv[6]; 
-	pidTc = fork();
-	if(pidTc < 0) {
-		perror("fork");
-		exit(0);
-	}
-	if(pidTc == 0) {  // throttle control child process
-		argv[0] = "./tc";
-		execv(argv[0], argv);
-	} else {
-		printf("%s", "creoserver\n");
-		tcSocketFd = connectClient("tcSocket");     // create ecu client
-		sleep(5);
-		
-		writeShit(tcSocketFd);
-		exit(0);
-	}
-}
-
-void createServer() {
-	int serverFd, clientFd, serverLen, clientLen;
-	struct sockaddr_un serverUNIXAddress; /*Server address */
-	struct sockaddr_un clientUNIXAddress; /*Client address */
-	struct sockaddr* serverSockAddrPtr; /*Ptr to server address*/
-	struct sockaddr* clientSockAddrPtr;/*Ptr to client address*/
-
-	/* Ignore death-of-child signals to prevent zombies */
-	//signal (SIGCHLD, SIG_IGN);
+	pipe(pipe_fwc_data);
 
 	serverSockAddrPtr = (struct sockaddr*) &serverUNIXAddress;
 	serverLen = sizeof (serverUNIXAddress);
 	clientSockAddrPtr = (struct sockaddr*) &clientUNIXAddress;
 	clientLen = sizeof (clientUNIXAddress);
-	serverFd = socket (AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL);
-
 	serverUNIXAddress.sun_family = AF_UNIX; /* Set domain type */
-	strcpy (serverUNIXAddress.sun_path, "socket"); /* Set name */
-	unlink ("socket"); /* Remove file if it already exists */
-	bind (serverFd, serverSockAddrPtr, serverLen);/*Create file*/
-	listen (serverFd, 5); /* Maximum pending connection length - 5 sensori in ascolto */
 
-	while (1) {/* Loop forever */ /* Accept a client connection */
-		printf("SERVER: wait client\n");
-		clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);
-		printf("SERVER: accept client\n");
+}
 
-		/*if (fork () == 0) { // Create child read ecu client
-		    //while(1) {
-		        //readFromSocket (clientFd); // Send data
-		        //sleep(1);
-		    //}
-		    close (clientFd); // Close the socket
-		    exit (0); // Terminate
-		} else {
-		    close (clientFd); // Close the client descriptor
-		    exit (0);
-		}*/
-		char data[30];
+void start() {
+	creaSensori();
+	//creaAttuatori();
 
-		if(fork () == 0) { /* Create child read ECU client */
-			printf("SERVER: wait to read something\n");
-			while(readLines(clientFd, data)) {
-				printf("%s", data);
+	//creaEcuClients();		// ECU-CLIENTS
+
+	creaServer();			// ECU-SERVER
+
+	//talkToHmi(); //-------------------------RIMASTO QUA
+}
+
+void startEcuSigHandler(int x) {
+	//signal(SIGUSR1, startEcuSigHandler);      		// look: reset handler ?!
+	printf("%s\n", "signal arrivata -> ECU STARTED");
+}
+
+void creaSensori() {
+    char *argv[2];
+
+    argv[0] = "./fwc";
+    pidFwc = fork();
+	creaComponente(pidFwc, argv);			// Sensore front windshield camera
+
+    /*argv[0] = "./bs";
+    pidBs = fork();
+	creaComponente(pidBs, argv);			// Sensore blind spot camera
+
+    argv[0] = "./ffr";
+    pidFfr = fork();
+	creaComponente(pidFfr, argv);			// Sensore forward facing radar*/
+}
+
+void creaAttuatori() {
+    char *argv[2];
+
+    argv[0] = "./tc";
+    pidTc = fork();
+	creaComponente(pidTc, argv);			// Attuatore throttle control
+
+    argv[0] = "./bbw";
+    pidBbw = fork();
+	creaComponente(pidBbw, argv);			// Attuatore brake by wire
+
+    argv[0] = "./sbw";
+    pidSbw = fork();
+	creaComponente(pidSbw, argv);			// Attuatore steer by wire
+}
+
+void creaComponente(pid_t pidComp, char *argv[]){
+    if(pidComp < 0){
+        perror("fork");
+        exit(1);
+    }
+    if(pidComp == 0) {
+        execv(argv[0], argv);
+        exit(0);
+    }
+}
+				/* pagina 3 testo progetto: ECU-CLIENT chiede di connettersi con i 3 ATTUATORI-SERVER. I dati che gli manda sulla socket
+					per mandare avanti la macchina, provengono da front windshied camera.*/
+void creaEcuClients() {
+	pidEcuClientFwcManager = fork();
+	fwcDataManager(pidEcuClientFwcManager);
+
+	/*pidEcuClientBbw = fork();
+	creaEcuClient(pidEcuClientBbw);
+
+	pidEcuClientSbw = fork();
+	creaEcuClient(pidEcuClientSbw);*/
+
+	//tcSocketFd = connectClient("tcSocket");
+	//bbwSocketFd = connectClient("bbwSocket");	
+	//sbwSocketFd = connectClient("sbwSocket");	
+}
+
+
+void fwcDataManager(pid_t pidEcuClientFwcManager){		// look: nome non corretto -- lui fa da manager dei dati ricevuti da fw
+    if(pidEcuClientFwcManager < 0){
+        perror("fork");
+        exit(1);
+    }
+    if(pidEcuClientFwcManager == 0) {
+		/*tcSocketFd = connectClient("tcSocket");
+		printf("%s", "ECU-CLIENT: connected to tcSocket\n");
+
+		sbwSocketFd = connectClient("sbwSocket");
+		printf("%s", "ECU-CLIENT: connected to sbwSocket\n");
+
+		bbwSocketFd = connectClient("bbwSocket");
+		printf("%s", "ECU-CLIENT: connected to bbwSocket\n");*/
+
+    	close(pipe_fwc_data[WRITE]);
+
+
+    	char data[MAX_DATA_SIZE];
+		//while(1){
+			read(pipe_fwc_data[READ], data, MAX_DATA_SIZE);
+			//printf("ECU-CLIENT: leggo = '%s'\n", data);
+			processFwcData(data);
+
+		//}		
+
+		close(pipe_fwc_data[READ]);		// look: ha sneso metterlo? non verrà mai eseguito
+        exit(0);
+    }
+}
+
+void creaServer() {					// look: per ora fa solo ECU SERVER - SENSORE fwc 
+	int clientFd;
+
+	int i = 0;
+	for(i = 0; i < NUMERO_SENSORI; i++) {
+		pidEcuServers[i] = fork();
+		if(pidEcuServers[i] == 0) {
+			fdSocketSensori[i] = socket (AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL);	// file descriptor socket sensori
+
+			strcpy (serverUNIXAddress.sun_path, nomeSocketSensori[i]); /* Set name */
+			unlink (nomeSocketSensori[i]);		/* Remove file if it already exists */
+			bind (fdSocketSensori[i], serverSockAddrPtr, serverLen);/*Create file*/
+			listen (fdSocketSensori[i], 1);	/* Maximum pending connection length */
+
+			printf("ECU-SERVER: wait client\n");
+			clientFd = accept (fdSocketSensori[i], clientSockAddrPtr, &clientLen);	// Accept a client connection - bloccante
+			printf("ECU-SERVER: accept client\n");
+
+			close(pipe_fwc_data[READ]);
+			
+			char data[MAX_DATA_SIZE];
+
+			printf("ECU-SERVER: wait to read something\n"); 
+			while (readSocket(clientFd, data)) {			// look: cosa ritorna read se socket vuoto? (so che ritorna 0 se END FILE)
+				if(strcmp(nomeSocketSensori[i], "fwcSocket") == 0) {
+					//write(pipe_fwc_data[WRITE], data, strlen(data)+1);
+					printf("CAZZOZOZOZ\n");
+				}
 			}
+
+			close(pipe_fwc_data[WRITE]);
+
+			printf("ECU-SERVER: end to read socket\n");
 
 			close (clientFd); /* Close the socket */
 			exit (0); /* Terminate */
 		} else {
-			close (clientFd); /* Close the client descriptor */
-			wait(NULL);			// WAIT CHILD READER - cosi facendo HMI verrà chiusa una volta letto qualcosa
+			wait(NULL);
+			printf("ARRIVO QUA ???\n");
+			exit(0);
 		}
-
-		break;			// leggo una sola volta
 	}
 }
 
-int readFromSocket(int fd) {
-	char str[100];
-	while (readLines (fd, str)); /* Read lines until end-of-input */
-	printf ("%s\n", str);
-}
+void processFwcData(char *data) {
+	char command[MAX_DATA_SIZE];
 
-int readLines(int fd, char *str) {
-	int n;
-	do { /* Read characters until ’\0’ or end-of-input */
-		n = read(fd, str, 1); /* Read one character */
-	} while (n > 0 && *str++ != '\0');
-	return (n > 0);
-}
+	if(strcmp(data, "DESTRA") == 0 || strcmp(data, "SINISTRA") == 0) {
+		//command = malloc(strlen(data) + 1);		// copia data e lo incollo in command
+		//sprintf(command, "%s", data);
 
-int connectClient(char *socketName){
-	int socketFd, serverLen;
-	struct sockaddr_un serverUNIXAddress;
-	struct sockaddr* serverSockAddrPtr;
+		writeSocket(sbwSocketFd, data);				// scrivo a steer-by-wire
+	} else if(strcmp(data, "PERICOLO") == 0) {
 
-	serverSockAddrPtr = (struct sockaddr*) &serverUNIXAddress;
-	serverLen = sizeof (serverUNIXAddress);
-	socketFd = socket (AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL);
-	serverUNIXAddress.sun_family = AF_UNIX; /* Server domain */
-	strcpy (serverUNIXAddress.sun_path, socketName);/*Server name*/
-	// int result = connect(socketFd, serverSockAddrPtr, serverLen);
-	// if(result < 0){
-	// 	return result;
-	// }
-	 int result;
-	 do { /* Loop until a connection is made with the server */
-		result = connect(socketFd, serverSockAddrPtr, serverLen);
-		if (result == -1) sleep (1); /* Wait and then try again */
-	} while (result == -1);
+		kill(pidBbw, SIGDANGER);// look: invio segnale di pericolo a break by wire
+		
+	} else {
+		printf("HO LETTO UN NUMERO\n");
 
-	printf("Ecu connessa con %s\n", socketName);
-	return socketFd;
-}
+		int nextSpeed = atoi(data);
+		int deltaSpeed;
 
-void writeShit (int socketFd) {
-	char *s = "SHIT BRODER";
-	write(socketFd, s, strlen (s) + 1);
+		if(nextSpeed > currentSpeed) {
+			deltaSpeed = nextSpeed - currentSpeed;
+			sprintf(command, "INCREMENTO %d", deltaSpeed);	// push stringa "INCREMENTO X" in command
 
-	printf("SCRIVO SU SOCKET\n");
+			currentSpeed = nextSpeed;
+
+			//writeSocket(sbwSocketFd, data);				// scrivo a throttle-control
+		} else if (nextSpeed < currentSpeed) {
+			deltaSpeed = currentSpeed - nextSpeed;
+			sprintf(command, "FRENO %d", deltaSpeed);	// push stringa "INCREMENTO X" in command
+
+			currentSpeed = nextSpeed;
+
+			//writeSocket(bbwSocketFd, data);				// scrivo a brake-by-wire
+		}
+
+		//write to talkToHmi();
+	}
+
 }
