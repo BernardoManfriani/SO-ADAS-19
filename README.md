@@ -24,6 +24,7 @@ Advanced Driver Assistance Systems
 	-aggiunto segnale define SIGPARK SIGUSR1
 	-aggiunto metodo parkingHandler
 	-aggiunta signal(SIGPARK, parkingHandler) appena dopo l'arrivo di SIGSTART
+	-aggiunto metodo endParkingHandler, triggerato qunado brake by wire termina il parcheggio
 	-rimosso parametro da metodo startEcuSigHandler
 	-rimosso metodo test
 - modifiche ffr
