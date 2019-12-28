@@ -12,33 +12,39 @@
 #include<signal.h>
 
 #define SIGSTART SIGUSR1
+#define SIGPARK SIGUSR1
+#define SIGDANGER SIGUSR2
+
 #define READ 0
 #define WRITE 1
 
 pid_t ecuPid;
+short int started = 0;
+char **startMode;
 
 void start();
+void dangerHandler();
 
 int main(int argc, char *argv[]) {
-
+	startMode = argv;
     if (argc < 2 || (strcmp(argv[1], "NORMALE") != 0 && strcmp(argv[1], "ARTIFICIALE") != 0)) {
 		printf("Specifica se vuoi un avvio NORMALE o ARTIFICIALE\n");
 		exit(1);
 	}
 
     ecuPid = fork();
-    
     if(ecuPid < 0) {
         perror("fork");
         exit(1);
     }
     if(ecuPid == 0) {  			// ECU child process
-        //setpgid(0,0);			// crea gruppo processi con "leader gruppo" ./ecu
+        setpgid(0,0);			// crea gruppo processi con "leader gruppo" ./ecu - con una kill all child processes are killed
         argv[0] = "./ecu";
         execv(argv[0], argv);	// argv[] = ["./ecu", "NORMALE o ARTIFICIALE"]
         exit(0);
     } 
     else { // HMI parent
+    	signal(SIGDANGER, dangerHandler);
         start();
         wait(NULL);			// aspetta finisca il processo figlio
         printf("\nHMI CONCLUSA - passo e chiudo\n");
@@ -49,16 +55,15 @@ int main(int argc, char *argv[]) {
 
 void start(){
 	char input[30];
-	short int started = 0;
     printf("Benvenuto nel simulatore di sistemi di guida autonoma. \nDigita INIZIO per avviare il veicolo,\no digita PARCHEGGIO per avviare la procedura di parcheggio e concludere il percorso.\n\n");	
 	while(1) {
 		if(fgets(input, 30, stdin) != NULL){
 			if((started) == 0) {
 				if(strcmp(input, "INIZIO\n") == 0) {
 					printf("Veicolo avviato\n");
-					kill(ecuPid, SIGUSR1);					// ECU avviata solamente una volta scritto INIZIO
+					kill(ecuPid, SIGSTART);					// look: ECU avviata solamente una volta scritto INIZIO
 					started = 1;
-					break;									// per ora così, almeno si termina il processo hmi
+					//break;									// look: per ora così, almeno si termina il processo hmi
 				} else if (strcmp(input, "PARCHEGGIO\n") == 0) {
 					printf("Prima di poter parcheggiare devi avviare il veicolo.\nDigita INIZIO per avviare il veicolo.\n\n");
 				} else {
@@ -76,4 +81,25 @@ void start(){
 		}
 	}
 	return;
+}
+
+void dangerHandler() {
+	signal(SIGDANGER, dangerHandler);
+	kill(-ecuPid, SIGKILL);
+	printf("%d\n", ecuPid);
+
+	ecuPid = fork();
+    if(ecuPid < 0) {
+        perror("fork");
+        exit(1);
+    }
+    if(ecuPid == 0) {  			// ECU child process
+        setpgid(0,0);
+        startMode[0] = "./ecu";
+        execv(startMode[0], startMode);	// argv[] = ["./ecu", "NORMALE o ARTIFICIALE"]
+        exit(0);
+    }
+
+	printf("Macchina arrestata\nPremi INIZIO per ripartire\n\n");
+	started = 0;
 }
