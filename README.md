@@ -2,7 +2,6 @@
 Advanced Driver Assistance Systems
 
 ------------------ 27/12/2019 -------------------
-- implementato il metodo che comparai  bytes letti da Forward Facing Radar (decodeFfrData - metodo test in ffr per capire come funziona)
 - modifiche brake by wire
 	-aggiunto pid ecu
 	-aggiunto SIGPARK
