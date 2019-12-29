@@ -7,95 +7,57 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#define NAME "socket"
-#define DEFAULT_PROTOCOL 0
+#include "socketManager.h"
+#include "fileManager.h"
 
 int currentSpeed;
 int socketFd;
 FILE *readFd;
 FILE *logFd;
 
-int createClient();
 void closeClient(int s);
-void writeOnSocket(int s, char *data);
-int connectClient(char *socketName);
-void openFile(char filename[], char mode[], FILE **filePointer);
-void closeFile(FILE *fd);
+
 void readFile(FILE *fd,FILE *fc);
 
 int main() {
   currentSpeed = 0;
-  printf("%s\n", "fwc avviato");
+  printf("SENSORE fwc: attivo\n");
 
-  socketFd = connectClient("socket");
-  printf("CLIENT: connection open\n");
+  socketFd = connectClient("fwcSocket");
+  printf("SENSORE fwc: connection open\n");
 
-  //openFile("frontCamera.data","r", &readFd);
-  //openFile("frontCamera.log","w", &logFd);
+  openFile("frontCamera.data","r", &readFd);      // look: PROSSIMO PASSO - APRIRE FILE .data 1.LEGGERE ROBA E SCRIVERE SU LOG  
+  openFile("camera.log","w", &logFd);
 
-  //printf("LEGGO read %d", readFd);
-  //printf("LEGGO log %d", logFd);
-
-  //readFile(readFd, logFd);
-
-  sleep(3);
-  char *data = "cazzofrah";
-  writeOnSocket(socketFd, data);
+  readFile(readFd, logFd);            // leggo file -> 1.Scrivo su fwcSocket 2.Scrivo su .log
 
   closeClient(socketFd);
-  printf("%s\n", "CLIENT: connection close");
+  printf("%s\n", "SENSORE fwc: connection close");
 
   return 0;
 }
 
-int connectClient(char *socketName){
-	int socketFd, serverLen;
-	struct sockaddr_un serverUNIXAddress;
-	struct sockaddr* serverSockAddrPtr;
-
-	serverSockAddrPtr = (struct sockaddr*) &serverUNIXAddress;
-	serverLen = sizeof (serverUNIXAddress);
-	socketFd = socket (AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL);
-	serverUNIXAddress.sun_family = AF_UNIX;  /* Server domain */
-	strcpy (serverUNIXAddress.sun_path, socketName);/*Server name*/
-	int result = connect(socketFd, serverSockAddrPtr, serverLen);
- 	if(result < 0){
- 		return result;
- 	}
-
- 	return socketFd;
-}
-
 void closeClient(int socketFd) {
-    close (socketFd); /* Close the socket */
-}
-
-void writeOnSocket (int socketFd, char *data) {
-    write(socketFd, data, strlen (data) + 1);
+    close(socketFd); /* Close the socket */
 }
 
 void readFile(FILE *fd,FILE *fc){
-	char buf[10];
-  	char *res;
-  	while(1) {
-   		res=fgets(buf, 10, fd);
+  char buf[20];               // look: 20 va è sufficiente?
+  char *res;
+  int i = 0;
+  while(i < 10) {
+  	res=fgets(buf, 10, fd);
+    size_t lastIndex = strlen(buf) - 1;
+    buf[lastIndex] = '\0';
 
-   		if(res==NULL )
-    		break;
+  	if(res==NULL){
+  		break;
+    }
 
-    	fprintf(fc, "%s", buf);		// scrivo su file .log
-    	// writeOnSocket(socketFd, buf);		// scrivo su socket fwc <--> ecu
-      sleep(1);
-  	}
-}
+  	fprintf(fc, "%s", buf);		    // scrivo su file .log
+   	writeSocket(socketFd, buf);		// scrivo su socket fwc <--> ecu
 
-void openFile(char filename[], char mode[], FILE **filePointer) {
-	*filePointer = fopen(filename, mode);
-	if(*filePointer == NULL) {
-		printf("Errore nell'apertura del file");
-		exit(1);
-	}
-}
-
-void closeFile(FILE *fd) {
+    sleep(1);           // look: dovrà essere 10 secondi
+    i++;
+  }
 }
