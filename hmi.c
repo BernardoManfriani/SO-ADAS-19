@@ -86,7 +86,6 @@ void start(){
 void dangerHandler() {
 	signal(SIGDANGER, dangerHandler);
 	kill(-ecuPid, SIGKILL);
-	printf("%d\n", ecuPid);
 
 	ecuPid = fork();
     if(ecuPid < 0) {
