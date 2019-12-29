@@ -84,7 +84,7 @@ void processFwcData(char *data);
 void decodeFfrData(unsigned char *data);
 
 int main(int argc, char *argv[]) {
-	startMode = argv[1];		// salvo modalità di avvio
+	//startMode = argv[1];		// salvo modalità di avvio
 	pidHmi = getppid();
 
 	signal(SIGSTART, startEcuSigHandler);
@@ -154,7 +154,10 @@ void endParkingHandler() {
 
 void creaSensori() {
     char *argv[2];
-    argv[1] = startMode;			// look: viene passato a tutti i sensori => noi lo utilizzeremo solo dove necessario
+    //argv[1] = startMode;			// look: viene passato a tutti i sensori => noi lo utilizzeremo solo dove necessario
+    argv[1] = NULL;			// look: ultimo elemento deve essere un null pointer
+
+    //printf("%s\n", argv);
 
     argv[0] = "./fwc";
     pidFwc = fork();
@@ -212,10 +215,10 @@ void fwcDataManager(pid_t pidEcuClientFwcManager){
     }
     if(pidEcuClientFwcManager == 0) {
 		/*tcSocketFd = connectClient("tcSocket");
-		printf("%s", "ECU-CLIENT: connected to tcSocket\n");
+		printf("%s", "ECU-CLIENT: connected to tcSocket\n");*/
 
-		bbwSocketFd = connectClient("bbwSocket");
-		printf("%s", "ECU-CLIENT: connected to bbwSocket\n");*/
+		/*bbwSocketFd = connectClient("bbwSocket");
+		printf("%s", "ECU-CLIENT: connected to bbwSocket\n");
 
 		/*sbwSocketFd = connectClient("sbwSocket");
 		printf("%s", "ECU-CLIENT: connected to sbwSocket\n");*/
@@ -317,8 +320,9 @@ void processFwcData(char *data) {
 		//writeSocket(sbwSocketFd, data);				// scrivo a steer-by-wire
 	} else if(strcmp(data, "PERICOLO") == 0) {
 		printf("ECU-CLIENT: leggo PERICOLO\n");
-		kill(pidBbw, SIGDANGER);	// invio segnale di pericolo a break by wire
+
 		currentSpeed = 0;
+		kill(pidBbw, SIGDANGER);	// invio segnale di pericolo a break by wire
 		kill(pidHmi, SIGDANGER);	// invio segnale di pericolo a HMI
 	} else {
 		printf("ECU-CLIENT: leggo NUMERO\n");
