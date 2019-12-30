@@ -45,7 +45,7 @@ void readFile(FILE *fd,FILE *fc){
   char buf[20];               // look: 20 va è sufficiente?
   char *res;
   int i = 0;
-  while(i < 10) {
+  while(i < 20) {
   	res=fgets(buf, 10, fd);
     size_t lastIndex = strlen(buf) - 1;
     buf[lastIndex] = '\0';

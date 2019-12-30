@@ -5,63 +5,58 @@
 
 #include<signal.h>
 
+//#include <sys/wait.h>
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
-
 #include <fcntl.h>
+
+#include "socketManager.h"
+#include "fileManager.h"
 
 #define DEFAULT_PROTOCOL 0
 #define READ 0
 #define WRITE 1
 
 
-int status;	//pipe status
-int pipeFd[2]; //pipe array
-pid_t pid;
+int status;
+int pipeFd[2];
+pid_t pidWriter;
 FILE *fileLog;
 
 int deltaSpeed;
 
+void initPipe();
 void createServer();
-int readFromSocket (int );
-int readLines (int x, char *y);
-void manageSocketData(char *data);
 void writeLog();
+
+int getAcceleration(char *socketData);
 
 void lettorePipe();
 
-// void sigTermHandler();
-
-void openFile(char filename[], char mode[], FILE **filePointer);
-
 int main() {
-    printf("%s\n", "---- throttle control attivo --------");
+    printf("ATTUATORE tc: attivo\n");
 
-	status = pipe(pipeFd);
-	if(status != 0) {
-		printf("Pipe error\n");
-		exit(1);
-	}
-	// fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);	//rende la read non bloccante
+    initPipe();
 
-	pid = fork();
-	if(pid == 0) {			// child process writer on throttle.log file
-		printf("\nchild process writer on throttle.log file RUNNING\n");
+	fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);	// rende la read su pipe non bloccante
+
+	pidWriter = fork();
+	if(pidWriter == 0) {			// child process writer on brake.log file
 		close(pipeFd[WRITE]);
 		writeLog();
 		close(pipeFd[READ]);
-		return 0;
+    	printf("ATTUATORE tc: write logger TERMINO\n");
 	} else {				// father process listener on socket
-		printf("\nfather process listener on socket RUNNING\n");
-		// signal(SIGTERM, sigTermHandler); //NON SO COSA FA - PUNTO AVANZATO PROGETTO
 		close(pipeFd[READ]); 
         createServer();
-		close(pipeFd[WRITE]);		// NECESSARIO ?
+		close(pipeFd[WRITE]);
+   		printf("ATTUATORE tc: tc server TERMINO\n");
 	}
-	printf("FINE\n");
-	exit(0);
+
+	return 0;
 }
 
 void createServer() {
@@ -70,9 +65,6 @@ void createServer() {
     struct sockaddr_un clientUNIXAddress; /*Client address */
     struct sockaddr* serverSockAddrPtr; /*Ptr to server address*/
     struct sockaddr* clientSockAddrPtr;/*Ptr to client address*/
-
-    /* Ignore death-of-child signals to prevent zombies */
-    signal (SIGCHLD, SIG_IGN);
 
     serverSockAddrPtr = (struct sockaddr*) &serverUNIXAddress;
     serverLen = sizeof (serverUNIXAddress);
@@ -84,77 +76,70 @@ void createServer() {
     strcpy (serverUNIXAddress.sun_path, "tcSocket"); /* Set name */
     unlink ("tcSocket"); /* Remove file if it already exists */
     bind (serverFd, serverSockAddrPtr, serverLen);/*Create file*/
-    listen (serverFd, 5); /* Maximum pending connection length */
+    listen (serverFd, 1); /* Maximum pending connection length */
 
     while (1) {/* Loop forever */ /* Accept a client connection */
-        clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);
+		printf("ATTUATORE-SERVER tc: wait client\n");
+
+		clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
+		printf("ATTUATORE-SERVER tc: accept client\n");
 
         char data[30];
-
-        if(fork () == 0) { /* Create child read ECU client */
-			printf("aspetto di leggere qualcosa da socket\n");
-            while(readLines(clientFd, data)) {
-                manageSocketData(data);
-            }
-
-            close (clientFd); /* Close the socket */
-            exit (0); /* Terminate */
-        } else {
-            close (clientFd); /* Close the client descriptor */
-            exit (0);
+		printf("ATTUATORE-SERVER tc: wait to read something\n");
+        while(readSocket(clientFd, data)) {
+            write(pipeFd[WRITE], data, strlen(data)+1);
         }
+
+		printf("ATTUATORE-SERVER tc: end to read socket\n");
+
+        close (clientFd); /* Close the socket */
+        exit (0); /* Terminate */
     }
 }
 
-int readFromSocket(int fd) {
-    char str[100];
-    while(readLines (fd, str)); /* Read lines until end-of-input */
-    printf("%s\n", str);
-}
-
-int readLines(int fd, char *str) {
-	int n;
-	do { /* Read characters until ’\0’ or end-of-input */
-		n = read(fd, str, 1); /* Read one character */
-	} while(n > 0 && *str++ != '\0');
-    return (n > 0);
-}
-
-void manageSocketData(char *data) {
-    printf("LEGGO DA SOCKET = %s -> SCRIVO SU PIPE\n", data);
-	int figa = write(pipeFd[WRITE], data, 30);     // write on pipe
-	printf("\n%d\n", figa);
-}
-
 void writeLog() {
+	char socketData[30];
 	openFile("throttle.log", "w", &fileLog);
 
-	int bytesRead;
-	char socketData [30];
-	// char *socketData;		// ----------------- PERCHE CON QUESTO NON FUNZIONA -----------------	//
-	while(1) {
-		bytesRead = read (pipeFd[READ], socketData, 30);
-		if(bytesRead != 0){
-			printf ("Read %d bytes: %s\n", bytesRead, socketData);
-		    fprintf(fileLog, socketData);
-			fflush(fileLog);		// SE COMMENTO NON SCRIVE SU FILE-- CAZZO PERCHEEEEE TROIO
+	int x = 0;
+	while(x <15) {							// look: per ora leggo solo 15 volte dalla pipe
+		if(read(pipeFd[READ], socketData, 30) > 0){
+			deltaSpeed = getAcceleration(strdup(socketData));
+
+			while(deltaSpeed > 0) {
+			    printf("ATTUATORE tc: AUMENTO 5 => deltaSpeed = %d\n", deltaSpeed);
+			    fprintf(fileLog, "%s", "AUMENTO 5\n");
+				fflush(fileLog);
+
+				deltaSpeed = deltaSpeed - 5;
+				x = x+1;
+				sleep(1);
+			}
+
+		} else {
+			printf("ATTUATORE tc: NO ACTION\n");
+		    fprintf(fileLog, "%s", "NO ACTION\n");
+			fflush(fileLog);
+
+			x = x+1;
+			sleep(1);
 		}
-		sleep(1);
 	}
-	
+
+	fclose(fileLog);
 }
 
-void openFile(char filename[], char mode[], FILE **filePointer) {
-	*filePointer = fopen(filename, mode);
-	if(*filePointer == NULL) {
-		printf("Errore nell'apertura del file");
+int getAcceleration(char *socketData) {
+	char *accelerazione = strtok(socketData," ");			// look: prende comando
+	accelerazione = strtok(NULL," ");		// look: prende numero del comando
+
+	return atoi(accelerazione);
+}
+
+void initPipe() {
+	status = pipe(pipeFd);
+	if(status != 0) {
+		printf("Pipe error\n");
 		exit(1);
 	}
-}
-
-
-void sigTermHandler() {
-	// kill(pid, SIGTERM);
-	exit(0);
-	
 }

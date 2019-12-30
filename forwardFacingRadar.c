@@ -5,9 +5,6 @@
 
 #include "socketManager.h"
 
-//#include <sys/types.h>
-//#include <sys/socket.h>
-//#include <sys/un.h>
 void test();
 void readFromFile();
 void writeLog();
@@ -28,13 +25,13 @@ int main(int argc, char *argv[]){
 
 	startMode = argv[1];
 
-	//socketFd = connectClient("ffrSocket");
+	socketFd = connectClient("ffrSocket");
   	printf("SENSORE ffr: connection open\n");
+  	printf("SENSORE ffr: modalità avvio %s\n", argv[1]);
 
-	//readFromFile();
-	test();
+	readFromFile();
 
-	//close(socketFd);
+	close(socketFd);
 
 	return 0;
 }
@@ -45,22 +42,23 @@ void readFromFile() {
 	} else {
 		readFd = fopen("randomARTIFICIALE.binary", "r");
 	}
+	if(readFd == NULL) {
+		printf("DIOHANEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEe\n");
+	}
 
 	logFd = fopen("radar.log", "w");
 
 	int i = 0;
 	while(i < 3) {
+		printf("FFR DENTRO IL CICLO\n");
 		bytesRead = fread(data, 1, 24, readFd);
-		if (bytesRead == 24) {
-			printf("%s\n", data);
-   				//writeSocket(socketFd, data);		// scrivo su socket ffr <--> ecu
-			    //fprintf(logFd, "%s", data);
-				//fflush(logFd);
-		} else {
-			printf("CAZZO\n");
+		if (bytesRead == 24) {			
+			writeSocket(socketFd, data);		// scrivo su socket ffr <--> ecu
+		    fprintf(logFd, "%s", data);
+			fflush(logFd);
 		}
-		sleep(2);
 
+		sleep(2);
 		i++;
 	}
 

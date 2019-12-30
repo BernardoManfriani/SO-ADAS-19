@@ -26,7 +26,7 @@
 
 int currentSpeed;
 
-pid_t pidHmi;
+pid_t pidHmi, pidEcu;
 
 // PID ATTUATORI
 pid_t pidTc, pidBbw, pidSbw;
@@ -52,7 +52,8 @@ struct sockaddr* clientSockAddrPtr;/*Ptr to client address*/
 
 // Nomi socket sensori
 const char *nomeSocketSensori[NUMERO_SENSORI] = {
-	"fwcSocket"
+	"fwcSocket",
+	//"ffrSocket"
 };
 
 // FD SOCKET ATTUATORI
@@ -84,8 +85,9 @@ void processFwcData(char *data);
 void decodeFfrData(unsigned char *data);
 
 int main(int argc, char *argv[]) {
-	//startMode = argv[1];		// salvo modalità di avvio
+	startMode = argv[1];		// salvo modalità di avvio
 	pidHmi = getppid();
+	pidEcu = getpid();
 
 	signal(SIGSTART, startEcuSigHandler);
 
@@ -153,11 +155,10 @@ void endParkingHandler() {
 }
 
 void creaSensori() {
-    char *argv[2];
-    //argv[1] = startMode;			// look: viene passato a tutti i sensori => noi lo utilizzeremo solo dove necessario
-    argv[1] = NULL;			// look: ultimo elemento deve essere un null pointer
+    char *argv[3];
+    argv[1] = startMode;			// look: viene passato a tutti i sensori => noi lo utilizzeremo solo dove necessario
+    argv[2] = NULL;			// look: ultimo elemento deve essere un null pointer
 
-    //printf("%s\n", argv);
 
     argv[0] = "./fwc";
     pidFwc = fork();
@@ -175,7 +176,7 @@ void creaSensori() {
 void creaAttuatori() {
     char *argv[2];
 
-    /*argv[0] = "./tc";
+    argv[0] = "./tc";
     pidTc = fork();
 	creaComponente(pidTc, argv);			// Attuatore throttle control*/
 
@@ -214,10 +215,10 @@ void fwcDataManager(pid_t pidEcuClientFwcManager){
         exit(1);
     }
     if(pidEcuClientFwcManager == 0) {
-		/*tcSocketFd = connectClient("tcSocket");
-		printf("%s", "ECU-CLIENT: connected to tcSocket\n");*/
+		tcSocketFd = connectClient("tcSocket");
+		printf("%s", "ECU-CLIENT: connected to tcSocket\n");
 
-		/*bbwSocketFd = connectClient("bbwSocket");
+		bbwSocketFd = connectClient("bbwSocket");
 		printf("%s", "ECU-CLIENT: connected to bbwSocket\n");
 
 		/*sbwSocketFd = connectClient("sbwSocket");
@@ -226,7 +227,6 @@ void fwcDataManager(pid_t pidEcuClientFwcManager){
     	close(pipe_fwc_data[WRITE]);
 
     	char data[MAX_DATA_SIZE];
-    	printf("MANAGER FCW PRIMA DI LEGERE\n");
 		while(read(pipe_fwc_data[READ], data, MAX_DATA_SIZE)){
 			processFwcData(data);
 		}		
@@ -247,12 +247,12 @@ void ffrDataManager(pid_t pidEcuClientFfrManager){
 
     	// look: devo riconoscere se all'interno del dato ci sono quel tipo di sequenze da testo progetto -> in tal caso kill a brake-by-wire
     	char data[MAX_DATA_SIZE];
-    	printf("MANAGER FFR PRIMA DI LEGERE\n");
 		while(read(pipe_ffr_data[READ], data, MAX_DATA_SIZE)){
-			printf("%d FFR MANAGER: leggo = '%s'\n", getpid(), data);
+			printf("FFR MANAGER: leggo\n");
 			decodeFfrData(data);
 		}		
 
+		printf("CHIUSO MANAGER FFR\n");
 		close(pipe_ffr_data[READ]);		// look: ha senso metterlo? non verrà mai eseguito
         exit(0);
     }
@@ -282,17 +282,17 @@ void creaServers() {					// look: per ora fa solo ECU SERVER - SENSORE fwc
 			printf("ECU-SERVER %s: wait to read something\n", nomeSocketSensori[i]);
 			while (readSocket(clientFd, data)) {			// look: cosa ritorna read se socket vuoto? (so che ritorna 0 se END FILE)
 				if(strcmp(nomeSocketSensori[i], "fwcSocket") == 0) {
-					//printf("cazzo1\n");
 					write(pipe_fwc_data[WRITE], data, strlen(data)+1);
 					//printf("LEGGO ROBA DA FWC SOCKET\n");
 				} else if(strcmp(nomeSocketSensori[i], "ffrSocket") == 0) {
-					//printf("cazzo2\n");
+					//printf("LEGGO ROBA DA FFR SOCKET --------\n");
 					write(pipe_ffr_data[WRITE], data, strlen(data)+1);
-					//printf("LEGGO ROBA DA FFR SOCKET ---- %s\n", data);
 				}
 			}
 
-			printf("ECU-SERVER %s: end to read socket\n", nomeSocketSensori[i]);
+			printf("ECU-SERVER %s: end to read socket PID = %d\n", nomeSocketSensori[i], getpid());
+
+			kill(pidEcuClientFwcManager, SIGKILL);		// look: togliere questa riga?!?!?
 
 			close (clientFd); /* Close the socket */
 			exit (0); /* Terminate */
@@ -324,10 +324,8 @@ void processFwcData(char *data) {
 		currentSpeed = 0;
 		kill(pidBbw, SIGDANGER);	// invio segnale di pericolo a break by wire
 		kill(pidHmi, SIGDANGER);	// invio segnale di pericolo a HMI
-	} else {
-		printf("ECU-CLIENT: leggo NUMERO\n");
-		//printf("ECU-CLIENT: leggo un numero = '%s'\n", data);
 
+	} else {				// viene letto un numero
 		int nextSpeed = atoi(data);
 		int deltaSpeed;
 
@@ -337,14 +335,14 @@ void processFwcData(char *data) {
 
 			currentSpeed = nextSpeed;
 
-			//writeSocket(tcSocketFd, data);				// scrivo a throttle-control
+			writeSocket(tcSocketFd, command);	// scrivo a throttle-control
 		} else if (nextSpeed < currentSpeed) {
 			deltaSpeed = currentSpeed - nextSpeed;
 			sprintf(command, "FRENO %d", deltaSpeed);	// push stringa "INCREMENTO X" in command
 
 			currentSpeed = nextSpeed;
 
-			//writeSocket(bbwSocketFd, data);				// scrivo a brake-by-wire
+			writeSocket(bbwSocketFd, command);	// scrivo a brake-by-wire
 		}
 
 		//write to talkToHmi();
@@ -355,7 +353,7 @@ void decodeFfrData(unsigned char *data) {
     unsigned char errValues[] = {0xA0, 0x0F, 0xB0, 0x72, 0x2F, 0xA8, 0x83, 0x59, 0xCE, 0x23};
 
     for(int i = 0; i < 8; ++i){				// look: STAMPA VALORE LETTO
-        printf("%02X-", data[i]);
+        printf("%02X ", data[i]);
     }
     printf("\n");
 
@@ -363,7 +361,11 @@ void decodeFfrData(unsigned char *data) {
 		for(int j = 0; j < 8; j++) {
 			if(data[j] == errValues[i]) {
 				printf("FFR MANAGER: TROVATO HEX SIMILE - ERROR %02X\n", data[j]);
-				kill(pidBbw, SIGDANGER); // look: inviare segnale di pericolo a brake by wire
+				kill(pidBbw, SIGDANGER); 	// invio segnale di pericolo a brake by wire
+
+				// look: -----ATTENZIONE------- sembra che ad eseguire in conseguenza il progetto, ffr non apre i file per leggere roba
+
+				kill(pidHmi, SIGDANGER);	// invio segnale di pericolo a HMI
 				return ;
 			}
 		}

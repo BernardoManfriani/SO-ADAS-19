@@ -11,7 +11,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-//#include <fcntl.h>
+#include <fcntl.h>
 
 #include "socketManager.h"
 #include "fileManager.h"
@@ -25,8 +25,8 @@
 
 pid_t pidEcu;
 
-int status;	//pipe status
-int pipeFd[2]; // pipe fd
+int status;
+int pipeFd[2];
 pid_t pidWriter;
 FILE *fileLog;
 
@@ -35,27 +35,22 @@ int deltaSpeed;
 void dangerHandler();
 void initPipe();
 void createServer();
-void manageSocketData(char *data);
+void brakeTillStop(int speed);
 void writeLog();
+int getDeceleration(char *socketData);
 
 void lettorePipe();
 
 int main() {
     printf("ATTUATORE bbw: attivo\n");
-
     pidEcu = getppid();
 
-	openFile("brake.log", "w", &fileLog);		// apro file - può arrivare un segnale di pericolo ancora prima di aver "toccato freno"
-
     signal(SIGDANGER, dangerHandler);
-    pause();
-    printf("ATTUATORE bbw: TERMINO\n");
+    initPipe();
 
-    /*initPipe();
+	fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);	// rende la read su pipe non bloccante
 
-    createServer();
-
-	// fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);	//rende la read non bloccante
+	openFile("brake.log", "w", &fileLog);		// apro file - può arrivare un segnale di pericolo ancora prima di aver "toccato freno"
 
 	pidWriter = fork();
 	if(pidWriter == 0) {			// child process writer on brake.log file
@@ -63,19 +58,22 @@ int main() {
 		close(pipeFd[WRITE]);
 		writeLog();
 		close(pipeFd[READ]);
-		return 0;				// look: perchè return? 
+		fclose(fileLog);
 	} else {				// father process listener on socket
 		close(pipeFd[READ]); 
         createServer();
 		close(pipeFd[WRITE]);
-	}*/
+	}
 
+    printf("ATTUATORE bbw: TERMINO\n");
 	return 0;
 }
 
 void dangerHandler() {
-    signal(SIGDANGER, dangerHandler);
-	fprintf(fileLog, "%s", "ARRESTO AUTO");
+    //signal(SIGDANGER, dangerHandler);			// look: resettare signal ???
+	fprintf(fileLog, "%s\n", "ARRESTO AUTO");
+	kill(getpid(), SIGTERM);		// uccide processo
+	// look: uccidere anche processo writer !? 
 }
 
 void createServer() {
@@ -104,11 +102,9 @@ void createServer() {
 		printf("ATTUATORE-SERVER bbw: accept client\n");
 
         char data[30];
-
 		printf("ATTUATORE-SERVER bbw: wait to read something\n");
         while(readSocket(clientFd, data)) {
-            printf("ATTUATORE-SERVER bbw: leggo = '%s'\n", data);
-            manageSocketData(data);
+            write(pipeFd[WRITE], data, strlen(data)+1);
         }
 
 		printf("ATTUATORE-SERVER bbw: end to read socket\n");
@@ -118,40 +114,57 @@ void createServer() {
     }
 }
 
-void manageSocketData(char *data) {
-    //printf("ATTUATORE bbw: leggo da socket = %s -> scrivo su pipe\n", data);
-	//write(pipeFd[WRITE], data, 30);     // write on pipe
-
-
-	char *command = strtok(data," ");			// look: prende primo comando
-	char *decelerazione = strtok(NULL," ");		// look: prende numero nel comando
-
-	deltaSpeed = decelerazione;
-
-	if(strcmp(command, "PARCHEGGIO") == 0) {
-		printf("RALLENTO:\n");
-		while(deltaSpeed > 0){
-			deltaSpeed = deltaSpeed / 5;
-			printf("speed: \n");
-			sleep(1);
-		}
-		kill(pidEcu, SIGPARK);		// segnalo a ECU parcheggio terminato
-	}
-}
-
 void writeLog() {
 	int bytesRead;
 	char socketData [30];
-	while(1) {
-		bytesRead = read (pipeFd[READ], socketData, 30);
-		if(bytesRead != 0){
-			printf ("Read %d bytes: %s\n", bytesRead, socketData);
-		    fprintf(fileLog, "%s", socketData);
+
+	int x = 0;
+	while(x <20) {							// look: per ora leggo solo 20 volte dalla pipe
+		if(read(pipeFd[READ], socketData, 30) > 0) {
+			char *command = strtok(strdup(socketData), " ");	// look: è necessario passare come argomento un duplicato della stringa
+			deltaSpeed = getDeceleration(strdup(socketData));
+
+			if(strcmp(command, "PARCHEGGIO") == 0) {
+				brakeTillStop(deltaSpeed);
+				deltaSpeed = 0;
+			}
+
+			while(deltaSpeed > 0) {
+			    printf("ATTUATORE bbw: DECREMENTO 5 => deltaSpeed = %d\n", deltaSpeed);
+			    fprintf(fileLog, "%s", "DECREMENTO 5\n");
+				fflush(fileLog);
+
+				deltaSpeed = deltaSpeed - 5;
+				x = x+1;
+				sleep(1);
+			}
+		} else {
+			printf("ATTUATORE bbw: NO ACTION\n");
+		    fprintf(fileLog, "%s", "NO ACTION\n");
 			fflush(fileLog);
+
+			x = x+1;
+			sleep(1);
 		}
+	}
+}
+
+void brakeTillStop(int speed) {
+	printf("RALLENTO:\n");
+	while(speed > 0){
+		speed = speed - 5;
+		printf("speed: %d\n", speed);
 		sleep(1);
 	}
-	
+	printf("PARCHEGGIATO\n");
+	kill(pidEcu, SIGPARK);		// segnalo a ECU che ho rallentato fino a fermarmi
+}
+
+int getDeceleration(char *socketData) {
+	char *decelerazione = strtok(socketData," ");			// look: prende primo comando
+	decelerazione = strtok(NULL," ");		// look: prende numero nel comando
+
+	return atoi(decelerazione);
 }
 
 void initPipe() {

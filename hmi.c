@@ -85,7 +85,7 @@ void start(){
 
 void dangerHandler() {
 	signal(SIGDANGER, dangerHandler);
-	kill(-ecuPid, SIGKILL);
+	kill(-ecuPid, SIGKILL);		// -ecuPid in modo da riferirsi all'intero gruppo
 
 	ecuPid = fork();
     if(ecuPid < 0) {
