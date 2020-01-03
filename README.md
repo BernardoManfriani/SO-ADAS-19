@@ -19,4 +19,6 @@ PROBLEMI:
    - Lanciando il codice di andre rimangono tanti processi aperti
    - HMI non si chiude mai da sola
    - Steer funziona apparentemente sia con la read bloccante ch enon bloccante
+   - Non esegue la exit a riga 44/45 dell'hmi.
+   
     
