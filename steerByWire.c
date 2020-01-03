@@ -1,5 +1,5 @@
 #include<stdio.h>
-#include<stdlib.h>);
+#include<stdlib.h>
 #include<unistd.h>
 #include<string.h>
 #include<fcntl.h>
@@ -29,7 +29,6 @@ FILE * logS;  //Camera Descriptor
 void createServer();
 
 void action(pid_t pid_sterzata, char *a);
-
 
 int main() {
 
@@ -70,8 +69,8 @@ void createServer() {
   serverFd = socket (AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL);
 
   serverUNIXAddress.sun_family = AF_UNIX; /* Set domain type */
-  strcpy (serverUNIXAddress.sun_path, "sbwSocket"); /* Set name */
-  unlink ("sbwSocket"); /* Remove file if it already exists */
+  strcpy (serverUNIXAddress.sun_path, "sbwSocket"); /* Set name */    //ELIMINARE: Questo sbwSocket cos'è? Va levato?
+  unlink ("sbwSocket"); /* Remove file if it already exists */        //ELIMINARE: Questo sbwSocket cos'è? Va levato?
   bind (serverFd, serverSockAddrPtr, serverLen);/*Create file*/
   listen (serverFd, 1); /* Maximum pending connection length */
 
@@ -83,12 +82,11 @@ void createServer() {
   clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
   printf("ATTUATORE-SERVER sbw: accept client\n");
 
-  fcntl(clientFd,F_SETFL,O_NONBLOCK); //Rende la read non bloccante
+  //fcntl(clientFd,F_SETFL,O_NONBLOCK); //Rende la read non bloccante    //ELIMINARE: Da rimettere non bloccante
   openFile("steer.log","w", &logS);
   char data[10];
 
   while (1) {/* Loop forever */ /* Accept a client connection */
-
 
     printf("ATTUATORE-SERVER sbw: wait to read something\n");
 
