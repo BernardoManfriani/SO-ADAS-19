@@ -14,6 +14,13 @@ CAMBIAMENTI FATTI :
     
       - Riceve o un valore o Destra e Sinistra, dunque scriverà NO ACTION, DESTRA o SINISTRA.
       
+   - PARK
+      - Dovrebbe funzionare anche se le stampe scazzano un po'. 
+      - Non riesco a capire se passa la roba giusta alla ecu attraverso la socket
+   - BLIND
+      - Stessa zuppa di park.
+      - Da testare meglio
+      
 PROBLEMI:
 
    - Lanciando il codice di andre rimangono tanti processi aperti
@@ -22,3 +29,7 @@ PROBLEMI:
    - Non esegue la exit a riga 44/45 dell'hmi.
    
     
+ROBA FUNZIONANTE SUL MIO BRANCH:
+   - Steer
+   - Blind
+   - Park
