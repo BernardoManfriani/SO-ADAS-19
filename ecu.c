@@ -18,7 +18,7 @@
 #define SIGDANGER SIGUSR2
 
 #define DEFAULT_PROTOCOL 0
-#define NUMERO_SENSORI 1
+#define NUMERO_SENSORI 3
 //#define NUMERO_ATTUATORI 3
 #define MAX_DATA_SIZE 100
 #define READ 0
@@ -32,7 +32,8 @@ pid_t pidHmi, pidEcu;
 pid_t pidTc, pidBbw, pidSbw;
 
 // PID SENSORI - look: non considero pidSvc, pidPa perchè processi attivati al bisogno e non all'avvio del sistema (?)
-pid_t pidFwc, pidFfr, pidBs;
+// BERNI: Io ho messo anche pidPa perchè tanto prima o poi va creato in Ecu
+pid_t pidFwc, pidFfr, pidBs, pidPa;
 
 // PID ECU-CLIENTS	-	clienti del socket aperto con gli attuatori
 pid_t pidEcuClientFwcManager, pidEcuClientFfrManager;
@@ -53,7 +54,9 @@ struct sockaddr* clientSockAddrPtr;/*Ptr to client address*/
 // Nomi socket sensori
 const char *nomeSocketSensori[NUMERO_SENSORI] = {
 	"fwcSocket",
-	//"ffrSocket"
+	//"ffrSocket",
+	"paSocket",
+	"bsSocket"
 };
 
 // FD SOCKET ATTUATORI
@@ -63,6 +66,8 @@ int tcSocketFd, bbwSocketFd, sbwSocketFd;
 int fdSocketSensori[NUMERO_SENSORI];
 
 char *startMode;
+
+int parcheggio = 1;
 
 void startEcuSigHandler();
 void parkingHandler();
@@ -85,6 +90,7 @@ int main(int argc, char *argv[]) {
 	pidHmi = getppid();
 	pidEcu = getpid();
 
+
 	signal(SIGSTART, startEcuSigHandler);
 
 	init();			// look: si mette qui per guadagnare un po di tempo
@@ -94,6 +100,7 @@ int main(int argc, char *argv[]) {
 	start();
 
 	return 0;
+
 }
 
 void init() {		// inizializza le pipe------- look: SBAGLIATO facendo cosi tutti i processi hanno tutte le pipe aperte
@@ -156,11 +163,18 @@ void creaSensori() {
 
     /*argv[0] = "./ffr";
     pidFfr = fork();
-	  creaComponente(pidFfr, argv);			// Sensore forward facing radar
+	  creaComponente(pidFfr, argv);			// Sensore forward facing radar*/
 
-    /*argv[0] = "./bs";
+    argv[0] = "./bs";
     pidBs = fork();
   	creaComponente(pidBs, argv);			// Sensore blind spot camera*/
+
+		if(parcheggio == 1){
+			argv[0] = "./pa";
+			pidPa = fork();
+			creaComponente(pidPa, argv);
+		}																	//Sensote park assist */
+
 }
 
 void creaAttuatori() {
@@ -174,12 +188,12 @@ void creaAttuatori() {
     pidBbw = fork();
 	  creaComponente(pidBbw, argv);			// Attuatore brake by wire*/
 
-    argv[0] = "./sbw";					// look: non funziona steer by wire - non mi legge null => non stampa NO ACTION
+    /*argv[0] = "./sbw";					// look: non funziona steer by wire - non mi legge null => non stampa NO ACTION
     pidSbw = fork();
 	  creaComponente(pidSbw, argv);			// Attuatore steer by wire*/
 }
 
-void creaComponente(pid_t pidComp, char *argv[]){
+void creaComponente(pid_t pidComp, char *argv[]){   //Template Method
     if(pidComp < 0){
         perror("fork");
         exit(1);
@@ -258,7 +272,8 @@ void processFwcData(char *data) {
 		//command = malloc(strlen(data) + 1);		// copia data e lo incollo in command
 		//sprintf(command, "%s", data);
 
-		printf("ECU-CLIENT: leggo DESTRA/SINISTRA\n");
+		//printf("ECU-CLIENT: leggo DESTRA/SINISTRA\n");
+
 		writeSocket(sbwSocketFd, data);				// scrivo a steer-by-wire
 	} else if(strcmp(data, "PERICOLO") == 0) {
 		printf("ECU-CLIENT: leggo PERICOLO\n");
@@ -273,14 +288,14 @@ void processFwcData(char *data) {
 		writeSocket(sbwSocketFd, data); // Se è un numero quello che leggo da frontcamera allora scrivo null
 		if(nextSpeed > currentSpeed) {
 			deltaSpeed = nextSpeed - currentSpeed;
-			sprintf(command, "INCREMENTO %d\n", deltaSpeed);	// push stringa "INCREMENTO X" in command
+			//sprintf(command, "INCREMENTO %d\n", deltaSpeed);	// push stringa "INCREMENTO X" in command
 
 			currentSpeed = nextSpeed;
 
 			writeSocket(tcSocketFd, command);	// scrivo a throttle-control
 		} else if (nextSpeed < currentSpeed) {
 			deltaSpeed = currentSpeed - nextSpeed;
-			sprintf(command, "FRENO %d\n", deltaSpeed);	// push stringa "INCREMENTO X" in command
+			//sprintf(command, "FRENO %d\n", deltaSpeed);	// push stringa "INCREMENTO X" in command
 
 			currentSpeed = nextSpeed;
 
@@ -297,7 +312,7 @@ void decodeFfrData(unsigned char *data) {
     for(int i = 0; i < 8; ++i){				// look: STAMPA VALORE LETTO
         printf("%02X ", data[i]);
     }
-    printf("\n");
+    //printf("\n");
 
     for(int i = 0; i < 10; i++) {
 		for(int j = 0; j < 8; j++) {
@@ -338,6 +353,7 @@ void creaServers() {					// look: per ora fa solo ECU SERVER - SENSORE fwc
 			char data[MAX_DATA_SIZE];
 
 			printf("ECU-SERVER %s: wait to read something\n", nomeSocketSensori[i]);
+			printf("%s\n", data );
 			while (readSocket(clientFd, data)) {			// look: cosa ritorna read se socket vuoto? (so che ritorna 0 se END FILE)
 				if(strcmp(nomeSocketSensori[i], "fwcSocket") == 0) {
 					write(pipe_fwc_data[WRITE], data, strlen(data)+1);
@@ -345,8 +361,22 @@ void creaServers() {					// look: per ora fa solo ECU SERVER - SENSORE fwc
 				} else if(strcmp(nomeSocketSensori[i], "ffrSocket") == 0) {
 					//printf("LEGGO ROBA DA FFR SOCKET --------\n");
 					write(pipe_ffr_data[WRITE], data, strlen(data)+1);
+				} else if(strcmp(nomeSocketSensori[i], "paSocket") == 0){
+					/*printf("\nValore: \n" );
+					for(int i=0; i < 4; i++){
+						printf("%.2x ", data[i]);
+					}
+					printf("\n");
+					//printf("%.2x\n", data);*/
+					printf("LEGGO ROBA DA PA SOCKET --------\n");
+				} else if(strcmp(nomeSocketSensori[i], "bsSocket") == 0){
+					printf("LEGGO ROBA DA BS SOCKET --------\n");
 				}
 			}
+
+
+
+
 
 			printf("ECU-SERVER %s: end to read socket PID = %d\n", nomeSocketSensori[i], getpid());
 
@@ -354,11 +384,13 @@ void creaServers() {					// look: per ora fa solo ECU SERVER - SENSORE fwc
 
 			close (clientFd); /* Close the socket */
 			exit (0); /* Terminate */
-		} /*else {
+		} else {
+			/*
 			wait(NULL);
 			printf("processo padre di %s chiude\n", nomeSocketSensori[i]);
 			exit(0);
-		}*/
+			*/
+		}
 	}
 
 	// look: creati i vari server esco e ECU termina - non va bene

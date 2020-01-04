@@ -11,64 +11,55 @@
 #include "fileManager.h"
 
 
+//void sendEcu(unsigned char buffer);
+
 int socketFd;
 
-FILE * logP; //assist.log descriptor
-
-//void sendEcu(unsigned char buffer);
+FILE * logB;
 
 unsigned char generateReadRand(unsigned char buffer);
 
 void readSend();
 
 int main(){
+	printf("SENSORE bs: attivo\n");
 
-		printf("SENSORE pa: attivo\n");
+	socketFd = connectClient("bsSocket");
+	printf("SENSORE bs: connection open\n");
 
-		socketFd = connectClient("paSocket");
-	  printf("SENSORE pa: connection open\n");
+	readSend();
 
-		readSend();
-
-		return 0;
-
+	return 0;
 }
 
-unsigned char generateReadRand(unsigned char buffer){
 
+unsigned char generateReadRand(unsigned char buffer){
 	int fd = open("/dev/urandom", O_RDONLY);
-	read(fd, &buffer, 4);
+	read(fd, &buffer, 8);
 	//buffer now contains the random data
 	close(fd);
 	return buffer;
 }
 
-/*void sendEcu(unsigned char buffer){
-	printf("Sto inviando alla ecu %.2x \n", buffer);
-}
-*/
-
 void readSend(){
 
-	openFile("assist.log","w", &logP);
+	openFile("spot.log","w", &logB);
 
-	unsigned char buffer[4];
+	unsigned char buffer[8];
 	int i=0;
 
 	while (i < 10){
-		sleep(1);
+		sleep(0.5);
 		printf("Sto inviando alla ecu ");
 
-		for(int j=0; j<4; j++){
+		for(int j=0; j<8; j++){
 			buffer[j] = generateReadRand(buffer[j]);
 			printf("%.2x",buffer[j]);
-			fprintf(logP , "%.2x", buffer[j]);
+			fprintf(logB , "%.2x", buffer[j]);
 		}
 		writeSocket(socketFd, buffer);
-		fprintf(logP, "%s", "\n" );
+		fprintf(logB, "%s", "\n" );
 		printf("\n");
-
-
 		i++;
 	}
 }

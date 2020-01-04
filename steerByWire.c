@@ -42,11 +42,14 @@ int main() {
 void action(pid_t  pid_sterzata, char *data){
 
   if (strcmp(data,"DESTRA") == 0 || strcmp(data, "SINISTRA") == 0){
+    printf("Sterzata\n");
     for (int i = 0; i < 4; i++) {
+      printf(".\n");
       sleep(1);
       fprintf(logS, "STO GIRANDO A %s\n", data);
     }
   } else {
+    printf("Dritto\n");
     sleep(1);
     fprintf(logS, "NO ACTION\n");
   }
@@ -88,13 +91,13 @@ void createServer() {
 
   while (1) {/* Loop forever */ /* Accept a client connection */
 
-    printf("ATTUATORE-SERVER sbw: wait to read something\n");
+    //printf("ATTUATORE-SERVER sbw: wait to read something\n");
 
     if(readSocket(clientFd, data)){
-      printf("ATTUATORE-SERVER sbw: leggo = '%s'\n", data);
+      //printf("ATTUATORE-SERVER sbw: leggo = '%s'\n", data);
       action(pid_sterzata, data);
     } else {
-      printf("ATTUATORE-SERVER sbw: end to read socket\n");
+      //printf("ATTUATORE-SERVER sbw: end to read socket\n");
 
       fclose(logS);
       close (clientFd); /* Close the socket */
