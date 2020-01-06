@@ -50,7 +50,7 @@ int main() {
 		close(pipeFd[READ]);
     	printf("ATTUATORE tc: write logger TERMINO\n");
 	} else {				// father process listener on socket
-		close(pipeFd[READ]); 
+		close(pipeFd[READ]);
         createServer();
 		close(pipeFd[WRITE]);
    		printf("ATTUATORE tc: tc server TERMINO\n");
@@ -107,7 +107,7 @@ void writeLog() {
 			deltaSpeed = getAcceleration(strdup(socketData));
 
 			while(deltaSpeed > 0) {
-			    printf("ATTUATORE tc: AUMENTO 5 => deltaSpeed = %d\n", deltaSpeed);
+			    //printf("ATTUATORE tc: AUMENTO 5 => deltaSpeed = %d\n", deltaSpeed);
 			    fprintf(fileLog, "%s", "AUMENTO 5\n");
 				fflush(fileLog);
 
@@ -117,7 +117,7 @@ void writeLog() {
 			}
 
 		} else {
-			printf("ATTUATORE tc: NO ACTION\n");
+			//printf("ATTUATORE tc: NO ACTION\n");
 		    fprintf(fileLog, "%s", "NO ACTION\n");
 			fflush(fileLog);
 

@@ -60,7 +60,7 @@ int main() {
 		close(pipeFd[READ]);
 		fclose(fileLog);
 	} else {				// father process listener on socket
-		close(pipeFd[READ]); 
+		close(pipeFd[READ]);
         createServer();
 		close(pipeFd[WRITE]);
 	}
@@ -73,7 +73,7 @@ void dangerHandler() {
     //signal(SIGDANGER, dangerHandler);			// look: resettare signal ???
 	fprintf(fileLog, "%s\n", "ARRESTO AUTO");
 	kill(getpid(), SIGTERM);		// uccide processo
-	// look: uccidere anche processo writer !? 
+	// look: uccidere anche processo writer !?
 }
 
 void createServer() {
@@ -93,25 +93,30 @@ void createServer() {
     strcpy (serverUNIXAddress.sun_path, "bbwSocket"); /* Set name */
     unlink ("bbwSocket"); /* Remove file if it already exists */
     bind (serverFd, serverSockAddrPtr, serverLen);/*Create file*/
-    listen (serverFd, 1); /* Maximum pending connection length */
+    listen (serverFd, 2); /* Maximum pending connection length */
 
-    while (1) {/* Loop forever */ /* Accept a client connection */
+    for(int j = 0; j < 1; j++) {		// look: con questo for forzo l'esistenza di due soli BBW-SERVER
 		printf("ATTUATORE-SERVER bbw: wait client\n");
 
 		clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
 		printf("ATTUATORE-SERVER bbw: accept client\n");
 
-        char data[30];
-		printf("ATTUATORE-SERVER bbw: wait to read something\n");
-        while(readSocket(clientFd, data)) {
-            write(pipeFd[WRITE], data, strlen(data)+1);
-        }
+		if (fork () == 0) { /* Create child */
+	        char data[30];
+			printf("ATTUATORE-SERVER bbw: wait to read something\n");
+	 		while(readSocket(clientFd, data)) {
+				printf("--------- BBW server READ SOMETHING\n");
+	        	write(pipeFd[WRITE], data, strlen(data)+1);
+			}
 
-		printf("ATTUATORE-SERVER bbw: end to read socket\n");
+			printf("ATTUATORE-SERVER bbw: end to read socket\n");
 
-        close (clientFd); /* Close the socket */
-        exit (0); /* Terminate */
-    }
+	 		close (clientFd); /* Close the socket */
+	 		exit (0); /* Terminate */
+		} else {
+			close (clientFd); /* Close the client descriptor */
+		}
+	}    
 }
 
 void writeLog() {
@@ -119,18 +124,20 @@ void writeLog() {
 	char socketData [30];
 
 	int x = 0;
-	while(x <20) {							// look: per ora leggo solo 20 volte dalla pipe
+	while(1) {							// look: per ora leggo solo 20 volte dalla pipe
 		if(read(pipeFd[READ], socketData, 30) > 0) {
-			char *command = strtok(strdup(socketData), " ");	// look: è necessario passare come argomento un duplicato della stringa
-			deltaSpeed = getDeceleration(strdup(socketData));
+			printf("--------- BBW WRITE LOG => '%s'\n", socketData);
+			//char *command = strtok(strdup(socketData), " ");	// look: è necessario passare come argomento un duplicato della stringa
+			//deltaSpeed = getDeceleration(strdup(socketData));
 
-			if(strcmp(command, "PARCHEGGIO") == 0) {
+			/*if(strcmp(command, "PARCHEGGIO") == 0) {
+				printf("BBW ------ STO PARCHEGGIANDO");
 				brakeTillStop(deltaSpeed);
 				deltaSpeed = 0;
-			}
+			}*/
 
 			while(deltaSpeed > 0) {
-			    printf("ATTUATORE bbw: DECREMENTO 5 => deltaSpeed = %d\n", deltaSpeed);
+			    //printf("ATTUATORE bbw: DECREMENTO 5 => deltaSpeed = %d\n", deltaSpeed);
 			    fprintf(fileLog, "%s", "DECREMENTO 5\n");
 				fflush(fileLog);
 
@@ -139,7 +146,7 @@ void writeLog() {
 				sleep(1);
 			}
 		} else {
-			printf("ATTUATORE bbw: NO ACTION\n");
+			//printf("ATTUATORE bbw: NO ACTION\n");
 		    fprintf(fileLog, "%s", "NO ACTION\n");
 			fflush(fileLog);
 

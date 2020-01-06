@@ -38,17 +38,24 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     if(ecuPid == 0) {  			// ECU child process
-        setpgid(0,0);			// crea gruppo processi con "leader gruppo" ./ecu - con una kill all child processes are killed
-        argv[0] = "./ecu";
-        execv(argv[0], argv);	// argv[] = ["./ecu", "NORMALE o ARTIFICIALE"]
-        exit(0);
-    } 
-    else { // HMI parent
-    	signal(SIGDANGER, dangerHandler);
-        start();
-        wait(NULL);			// aspetta finisca il processo figlio
-        printf("\nHMI CONCLUSA - passo e chiudo\n");
-    }
+    	pid_t pidOut = fork();
+    	if(pidOut == 0){	// look: Tutti  i  comandi  inviati  dalla  Central  ECU  a  qualunque  componente  sono 
+    						// inseriti  in  un  file  di  log  ECU.log  e stampati a video tramite la HMI.
+    		system("rm -f ECU.log; touch ECU.log; gnome-terminal -- bash -c \"echo HMI OUTPUT:; tail -F ECU.log; bash\"");
+
+    	} else {
+	    	// -----------------------------------------------------------------
+	        setpgid(0,0);			// crea gruppo processi con "leader gruppo" ./ecu - con una kill all child processes are killed
+	        argv[0] = "./ecu";
+	        execv(argv[0], argv);	// argv[] = ["./ecu", "NORMALE o ARTIFICIALE"]
+	        exit(0);
+	    } 
+	} else { // HMI parent
+	    	signal(SIGDANGER, dangerHandler);
+	        start();
+	        wait(NULL);			// aspetta finisca il processo figlio
+	        printf("\nHMI CONCLUSA - passo e chiudo\n");
+	}
 
     return 0;
 }
@@ -58,18 +65,17 @@ void start(){
     printf("Benvenuto nel simulatore di sistemi di guida autonoma. \nDigita INIZIO per avviare il veicolo,\no digita PARCHEGGIO per avviare la procedura di parcheggio e concludere il percorso.\n\n");	
 	while(1) {
 		if(fgets(input, 30, stdin) != NULL){
-			if((started) == 0) {
+			if(started == 0) {
 				if(strcmp(input, "INIZIO\n") == 0) {
 					printf("Veicolo avviato\n");
 					kill(ecuPid, SIGSTART);					// look: ECU avviata solamente una volta scritto INIZIO
 					started = 1;
-					//break;									// look: per ora così, almeno si termina il processo hmi
 				} else if (strcmp(input, "PARCHEGGIO\n") == 0) {
 					printf("Prima di poter parcheggiare devi avviare il veicolo.\nDigita INIZIO per avviare il veicolo.\n\n");
 				} else {
 					printf("Comando non ammesso.\n\n");
 				}
-			} /*else {    // Una volta avviata la macchina, concesso solo parcheggio
+			} else {    // Una volta avviata la macchina, concesso solo parcheggio
 				if(strcmp(input, "PARCHEGGIO\n") == 0) {
 					printf("Sto fermando il veicolo...\n");
 					kill(ecuPid, SIGPARK);	// durante parcheggio kill ecu process 
@@ -77,7 +83,7 @@ void start(){
 				} else {
 					printf("Comando non ammesso. \nDigita PARCHEGGIO per parcheggiare il veicolo\n\n");
 				}
-			}*/
+			}
 		}
 	}
 	return;

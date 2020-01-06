@@ -26,7 +26,7 @@ int main() {
   socketFd = connectClient("fwcSocket");
   printf("SENSORE fwc: connection open\n");
 
-  openFile("frontCamera.data","r", &readFd);      // look: PROSSIMO PASSO - APRIRE FILE .data 1.LEGGERE ROBA E SCRIVERE SU LOG  
+  openFile("frontCamera.data","r", &readFd);      // look: PROSSIMO PASSO - APRIRE FILE .data 1.LEGGERE ROBA E SCRIVERE SU LOG
   openFile("camera.log","w", &logFd);
 
   readFile(readFd, logFd);            // leggo file -> 1.Scrivo su fwcSocket 2.Scrivo su .log
@@ -45,7 +45,7 @@ void readFile(FILE *fd,FILE *fc){
   char buf[20];               // look: 20 va è sufficiente?
   char *res;
   int i = 0;
-  while(i < 20) {
+  while(i < 10) {
   	res=fgets(buf, 10, fd);
     size_t lastIndex = strlen(buf) - 1;
     buf[lastIndex] = '\0';
@@ -53,11 +53,10 @@ void readFile(FILE *fd,FILE *fc){
   	if(res==NULL){
   		break;
     }
-
-  	fprintf(fc, "%s", buf);		    // scrivo su file .log
+  	fprintf(fc, "%s\n", buf);		    // scrivo su file .log
    	writeSocket(socketFd, buf);		// scrivo su socket fwc <--> ecu
 
-    sleep(1);           // look: dovrà essere 10 secondi
+    sleep(5);           // look: dovrà essere 10 secondi
     i++;
   }
 }
