@@ -35,6 +35,7 @@ int deltaSpeed;
 void dangerHandler();
 void initPipe();
 void createServer();
+void manageData(char *socketData);
 void brakeTillStop(int speed);
 void writeLog();
 int getDeceleration(char *socketData);
@@ -95,28 +96,69 @@ void createServer() {
     bind (serverFd, serverSockAddrPtr, serverLen);/*Create file*/
     listen (serverFd, 2); /* Maximum pending connection length */
 
-    for(int j = 0; j < 1; j++) {		// look: con questo for forzo l'esistenza di due soli BBW-SERVER
-		printf("ATTUATORE-SERVER bbw: wait client\n");
+	int pidFirstClient = fork();
+	if(pidFirstClient == 0){
+	    while (1) {/* Loop forever */ /* Accept a client connection */
+			printf("ATTUATORE-SERVER bbw-%d: wait client\n", getpid());
 
-		clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
-		printf("ATTUATORE-SERVER bbw: accept client\n");
+			clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
+			printf("ATTUATORE-SERVER bbw-%d: accept client\n", getpid());
 
-		if (fork () == 0) { /* Create child */
 	        char data[30];
-			printf("ATTUATORE-SERVER bbw: wait to read something\n");
-	 		while(readSocket(clientFd, data)) {
-				printf("--------- BBW server READ SOMETHING\n");
-	        	write(pipeFd[WRITE], data, strlen(data)+1);
-			}
+			printf("ATTUATORE-SERVER bbw-%d: wait to read something from CLIENT\n", getpid());
 
-			printf("ATTUATORE-SERVER bbw: end to read socket\n");
+	        while(readSocket(clientFd, data)) {
+				printf("IF----BBW server-%d: READ SOMETHING=> '%s'\n", getpid(),data);
 
-	 		close (clientFd); /* Close the socket */
-	 		exit (0); /* Terminate */
-		} else {
-			close (clientFd); /* Close the client descriptor */
+				manageData(data);
+	        }
+
+			printf("ATTUATORE-SERVER bbw-%d: end to read socket\n", getpid());
+
+	        close (clientFd); /* Close the socket */
+	        exit (0); /* Terminate */
 		}
-	}    
+    } else {
+	    while (1) {/* Loop forever */ /* Accept a client connection */
+			printf("ATTUATORE-SERVER bbw-%d: wait client\n", getpid());
+
+			clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
+			printf("ATTUATORE-SERVER bbw-%d: accept client\n", getpid());
+
+	        char data[30];
+			printf("ATTUATORE-SERVER bbw-%d: wait to read something from CLIENT\n", getpid());
+
+	        while(readSocket(clientFd, data)) {
+				printf("ELSE-----BBW server-%d: READ SOMETHING => '%s'\n",getpid(), data);
+
+				manageData(data);
+	        }
+
+			printf("ATTUATORE-SERVER bbw-%d: end to read socket\n", getpid());
+
+	        close (clientFd); /* Close the socket */
+	        exit (0); /* Terminate */
+		}
+    }
+}
+
+void manageData(char *socketData) {
+	//printf("ENTRO IN manageData ---\n");
+	char *command = strtok(strdup(socketData), " ");	
+	//printf("COMMAND = '%s'\n", command);
+	deltaSpeed = getDeceleration(socketData);
+	//printf("DELTA SPEED = '%d'\n", deltaSpeed);
+
+	if(strcmp(command, "PARCHEGGIO") == 0) {
+		printf("BBW PARCHEGGIO\n");
+		brakeTillStop(deltaSpeed);
+		deltaSpeed = 0;
+
+		kill(pidWriter, SIGTERM);
+		exit(0);
+	} else {
+		write(pipeFd[WRITE], socketData, strlen(socketData)+1);
+	}
 }
 
 void writeLog() {
@@ -126,9 +168,12 @@ void writeLog() {
 	int x = 0;
 	while(1) {							// look: per ora leggo solo 20 volte dalla pipe
 		if(read(pipeFd[READ], socketData, 30) > 0) {
-			printf("--------- BBW WRITE LOG => '%s'\n", socketData);
+			printf("BBW LOGGER HA LETTO QUALCOSA ----------\n");
 			//char *command = strtok(strdup(socketData), " ");	// look: è necessario passare come argomento un duplicato della stringa
 			//deltaSpeed = getDeceleration(strdup(socketData));
+			char *command = strtok(strdup(socketData), " ");	
+
+			deltaSpeed = getDeceleration(socketData);
 
 			/*if(strcmp(command, "PARCHEGGIO") == 0) {
 				printf("BBW ------ STO PARCHEGGIANDO");
@@ -168,7 +213,8 @@ void brakeTillStop(int speed) {
 }
 
 int getDeceleration(char *socketData) {
-	char *decelerazione = strtok(socketData," ");			// look: prende primo comando
+	char *prova = strdup(socketData);
+	char *decelerazione = strtok(prova," ");			// look: prende primo comando
 	decelerazione = strtok(NULL," ");		// look: prende numero nel comando
 
 	return atoi(decelerazione);

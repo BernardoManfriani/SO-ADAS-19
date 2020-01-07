@@ -19,11 +19,14 @@
 #define WRITE 1
 
 pid_t ecuPid;
+pid_t pidOutputProcess;
+
 short int started = 0;
 char **startMode;
 
 void start();
 void dangerHandler();
+void sigEndParkHandler();
 
 int main(int argc, char *argv[]) {
 	startMode = argv;
@@ -38,8 +41,8 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     if(ecuPid == 0) {  			// ECU child process
-    	pid_t pidOut = fork();
-    	if(pidOut == 0){	// look: Tutti  i  comandi  inviati  dalla  Central  ECU  a  qualunque  componente  sono 
+    	pidOutputProcess = fork();
+    	if(pidOutputProcess == 0){	// look: Tutti  i  comandi  inviati  dalla  Central  ECU  a  qualunque  componente  sono 
     						// inseriti  in  un  file  di  log  ECU.log  e stampati a video tramite la HMI.
     		system("rm -f ECU.log; touch ECU.log; gnome-terminal -- bash -c \"echo HMI OUTPUT:; tail -F ECU.log; bash\"");
 
@@ -52,6 +55,7 @@ int main(int argc, char *argv[]) {
 	    } 
 	} else { // HMI parent
 	    	signal(SIGDANGER, dangerHandler);
+	    	signal(SIGPARK, sigEndParkHandler);
 	        start();
 	        wait(NULL);			// aspetta finisca il processo figlio
 	        printf("\nHMI CONCLUSA - passo e chiudo\n");
@@ -107,4 +111,10 @@ void dangerHandler() {
 
 	printf("Macchina arrestata\nPremi INIZIO per ripartire\n\n");
 	started = 0;
+}
+
+void sigEndParkHandler() {
+	kill(-ecuPid, SIGTERM);
+	kill(pidOutputProcess, SIGTERM);
+	kill(0, SIGTERM);
 }

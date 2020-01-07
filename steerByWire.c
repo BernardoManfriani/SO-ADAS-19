@@ -24,8 +24,8 @@ FILE * logS;  //Camera Descriptor
 //char logAction[30];
 
 void createServer();
-
 void action(char *a);
+void sigTermHandler();
 
 int main(int argc, char *argv[]) {
 
@@ -36,6 +36,7 @@ int main(int argc, char *argv[]) {
       argv[0] = "./bs"; 
       execv(argv[0],argv);
   } else {
+    signal(SIGTERM, sigTermHandler);
     createServer();
   }
 
@@ -102,5 +103,11 @@ void createServer() {
     }
 
   }
+}
 
+
+void sigTermHandler() {
+  signal(SIGTERM,SIG_DFL);
+  kill(pidBs,SIGTERM);
+  exit(0);
 }

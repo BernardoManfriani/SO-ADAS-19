@@ -14,7 +14,7 @@ int readSocket(int fd, char *str) {
 	} while (n > 0 && *str++ != '\0');
 
 	return (n > 0);
-	 	}
+}
 
 void writeSocket (int socketFd, char *data) {
     write(socketFd, data, strlen (data) + 1);

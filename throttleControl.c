@@ -35,6 +35,7 @@ void writeLog();
 int getAcceleration(char *socketData);
 
 void lettorePipe();
+void sigTermHandler();
 
 int main() {
     printf("ATTUATORE tc: attivo\n");
@@ -50,6 +51,8 @@ int main() {
 		close(pipeFd[READ]);
     	printf("ATTUATORE tc: write logger TERMINO\n");
 	} else {				// father process listener on socket
+		signal(SIGTERM, sigTermHandler);
+
 		close(pipeFd[READ]);
         createServer();
 		close(pipeFd[WRITE]);
@@ -102,7 +105,7 @@ void writeLog() {
 	openFile("throttle.log", "w", &fileLog);
 
 	int x = 0;
-	while(x <15) {							// look: per ora leggo solo 15 volte dalla pipe
+	while(1) {							// look: per ora leggo solo 15 volte dalla pipe
 		if(read(pipeFd[READ], socketData, 30) > 0){
 			deltaSpeed = getAcceleration(strdup(socketData));
 
@@ -142,4 +145,9 @@ void initPipe() {
 		printf("Pipe error\n");
 		exit(1);
 	}
+}
+
+void sigTermHandler() {
+  kill(pidWriter, SIGTERM);
+  exit(0);
 }
