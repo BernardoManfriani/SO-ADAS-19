@@ -33,3 +33,9 @@ ROBA FUNZIONANTE SUL MIO BRANCH:
    - Steer
    - Blind
    - Park
+   
+   
+   
+  
+ANNOTAZIONI:
+   - kill(pid,SIGNAL) manda una signal ad un processo. Ma se questo processo non è in attesa viene ucciso. Potrebbe essere utlie per il progetto 
