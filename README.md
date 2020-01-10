@@ -36,6 +36,6 @@ ROBA FUNZIONANTE SUL MIO BRANCH:
    
    
    
-  
+10.01.2019
 ANNOTAZIONI:
    - kill(pid,SIGNAL) manda una signal ad un processo. Ma se questo processo non è in attesa viene ucciso. Potrebbe essere utlie per il progetto 
