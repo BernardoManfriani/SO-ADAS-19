@@ -113,6 +113,8 @@ int getCurrentSpeed(char *);
 
 void endProgram();
 
+int readPipe (int pipeFd, char *data); // ------------------------------------
+
 int main(int argc, char *argv[]) {
 	startMode = argv[1];		// salvo modalità di avvio
 	pidHmi = getppid();
@@ -411,9 +413,9 @@ void creaServers() {					// look: per ora fa solo ECU SERVER - SENSORE fwc
 }
 
 void processFwcData(char *data) {
-	char command[MAX_DATA_SIZE];
+	char command[20];
 
-	strcpy(command, "");		// reset command
+	strcpy(command, "NESSUN COMANDO");		// reset command
 	if(strcmp(data, "DESTRA") == 0 || strcmp(data, "SINISTRA") == 0) {
 		sprintf(command, "%s", data);		// copia data in command
 
@@ -452,12 +454,12 @@ void processFwcData(char *data) {
 
 	}
 
-	//printf("COMMAND: '%s'\n", command);
 	// scrivo a ecuLogger commando per OUTPUT
-	if(strcmp(command, "") != 0) {			// controllo se la stringa command è diversa dalla stringa vuota
-		printf("COMMAND NON VUOTO\n");
+	if(strcmp(command, "NESSUN COMANDO") != 0) {			// controllo se la stringa command è diversa dalla stringa vuota
+		printf("ProcessFwcData: (command != 'NESSUN COMANDO') => SCRIVO INCREMENTO/FRENO\n");
 		write(pipe_ecu_logger[WRITE], command, strlen(command)+1);
 	}
+	//fflush(stdout);
 }
 
 void decodeFfrData(unsigned char *data) {
@@ -505,13 +507,13 @@ void decodePaData(unsigned char *data) {
 
     for(int i = 0; i < 10; i=i+2) {
 		for(int j = 0; j < 4; j=j+2) {
-       		/*printf("PA CONFRONTO: %02X%02X - ", data[j],data[j+1]);
-       		printf("%02X%02X\n", errValues[i],errValues[i+1]);*/
+       		printf("PA CONFRONTO: %02X%02X - ", data[j],data[j+1]);
+       		printf("%02X%02X\n", errValues[i],errValues[i+1]);
 
     		if(data[j] == errValues[i] && data[j+1] == errValues[i+1]){
 				printf("PA MANAGER: TROVATO HEX SIMILE - ERROR %02X\n", data[j]);
 				kill(pidPa, SIGUSR2);
-				printf("CAZZOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO\n");
+				//printf("CAZZOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO\n");
     		}
 		}
     }
@@ -526,18 +528,18 @@ void ecuLogger() {
 
 	int updatedSpeed;
 
-	while(read(pipe_ecu_logger[READ], ecuCommand, MAX_DATA_SIZE)){
-		printf("ECU-LOGGER: %s\n", ecuCommand);
+	//while(read(pipe_ecu_logger[READ], ecuCommand, MAX_DATA_SIZE)){
+	while(readPipe(pipe_ecu_logger[READ], ecuCommand)){
+		//printf("ECU-LOGGER: LEGGO %s\n", ecuCommand);
 		char receivedSpeed[20];
 		sprintf(receivedSpeed, "%s", ecuCommand);
-
 		if((updatedSpeed = getCurrentSpeed(receivedSpeed)) > -1){
 			currentSpeed = updatedSpeed;
 		} else {
-			//printf("2--------------------------ECU-LOGGER: %s\n", ecuCommand);
 			fprintf(ecuLogFd, "%s\n", ecuCommand);			// scrivo su ECU.log
 			fflush(ecuLogFd);
 		}
+		//fflush(stdout);
 	}
 
 	close(pipe_ecu_logger[READ]);
@@ -548,7 +550,7 @@ void ecuLogger() {
 int getCurrentSpeed(char *fullCommand) {
 	char *speed = strtok (fullCommand," ");
 
-	if(strcmp(speed, "UPDATE") == 0){      // prima parte del comando uguale a "UPDATE"
+	if(strcmp(speed, "UPDATE") == 0){      // prima parola del comando == "UPDATE"
 		speed = strtok (NULL, " ");
 		return atoi(speed);
 	} else {
@@ -574,7 +576,7 @@ void parkingHandler() {
 	//kill(pidTc, SIGTERM);
 	//kill(pidSbw, SIGTERM);
 
-	kill(pidFwc, SIGKILL);
+	kill(pidFwc, SIGKILL);		//look: fare fin da subito? Altrimenti possono arrivarmi dei comandi per TC,BBW o SBW
 }
 
 void creaParkAssist() {
@@ -599,4 +601,14 @@ void endParkingHandler() {
 
 void endProgram() {
 	kill(pidHmi, SIGPARK);		// hmi chiuderà tutti i processi attivi del programma
+}
+
+
+int readPipe(int pipeFd, char *data) {
+	int n;
+	do { /* Read characters until ’\0’ or end-of-input */
+		n = read (pipeFd, data, 1); /* Read one character */
+	} while (n > 0 && *data++ != '\0');
+
+	return (n > 0);
 }

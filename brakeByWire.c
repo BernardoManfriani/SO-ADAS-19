@@ -5,7 +5,7 @@
 
 #include<signal.h>
 
-//#include <sys/wait.h>
+#include <sys/wait.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -63,6 +63,8 @@ int main() {
 	} else {				// father process listener on socket
 		close(pipeFd[READ]);
         createServer();
+
+        wait(NULL);		// look: mettendo questo wait mi è stato possibile creare 2 soli bbw server, senza fare un while(1)
 		close(pipeFd[WRITE]);
 	}
 
@@ -96,50 +98,29 @@ void createServer() {
     bind (serverFd, serverSockAddrPtr, serverLen);/*Create file*/
     listen (serverFd, 2); /* Maximum pending connection length */
 
-	int pidFirstClient = fork();
-	if(pidFirstClient == 0){
-	    while (1) {/* Loop forever */ /* Accept a client connection */
-			printf("ATTUATORE-SERVER bbw-%d: wait client\n", getpid());
+    for(int j = 0; j < 2; j++) {	// creo 2 BBW-SERVER
+		printf("ATTUATORE-SERVER bbw-%d: wait client\n", getpid());
 
-			clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
-			printf("ATTUATORE-SERVER bbw-%d: accept client\n", getpid());
+		clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
+		printf("ATTUATORE-SERVER bbw-%d: accept client\n", getpid());
 
+		if (fork () == 0) { /* Create child */
 	        char data[30];
+
 			printf("ATTUATORE-SERVER bbw-%d: wait to read something from CLIENT\n", getpid());
-
-	        while(readSocket(clientFd, data)) {
-				printf("IF----BBW server-%d: READ SOMETHING=> '%s'\n", getpid(),data);
-
-				manageData(data);
-	        }
+	 		while(readSocket(clientFd, data)) {
+				printf("BBW server READ SOMETHING\n");
+	        	manageData(data);
+			}
 
 			printf("ATTUATORE-SERVER bbw-%d: end to read socket\n", getpid());
 
-	        close (clientFd); /* Close the socket */
-	        exit (0); /* Terminate */
+	 		close (clientFd); /* Close the socket */
+	 		exit (0); /* Terminate */
+		} else {
+			close (clientFd); /* Close the client descriptor */
 		}
-    } else {
-	    while (1) {/* Loop forever */ /* Accept a client connection */
-			printf("ATTUATORE-SERVER bbw-%d: wait client\n", getpid());
-
-			clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
-			printf("ATTUATORE-SERVER bbw-%d: accept client\n", getpid());
-
-	        char data[30];
-			printf("ATTUATORE-SERVER bbw-%d: wait to read something from CLIENT\n", getpid());
-
-	        while(readSocket(clientFd, data)) {
-				printf("ELSE-----BBW server-%d: READ SOMETHING => '%s'\n",getpid(), data);
-
-				manageData(data);
-	        }
-
-			printf("ATTUATORE-SERVER bbw-%d: end to read socket\n", getpid());
-
-	        close (clientFd); /* Close the socket */
-	        exit (0); /* Terminate */
-		}
-    }
+	} 
 }
 
 void manageData(char *socketData) {
@@ -149,7 +130,7 @@ void manageData(char *socketData) {
 	deltaSpeed = getDeceleration(socketData);
 	//printf("DELTA SPEED = '%d'\n", deltaSpeed);
 
-	if(strcmp(command, "PARCHEGGIO") == 0) {
+	if(strcmp(command, "PARCHEGGIO") == 0) {	//look: metto qui => non considero più i comandi che mi arrivano da ECU-CLIENT
 		printf("BBW PARCHEGGIO\n");
 		brakeTillStop(deltaSpeed);
 		deltaSpeed = 0;
@@ -168,7 +149,7 @@ void writeLog() {
 	int x = 0;
 	while(1) {							// look: per ora leggo solo 20 volte dalla pipe
 		if(read(pipeFd[READ], socketData, 30) > 0) {
-			printf("BBW LOGGER HA LETTO QUALCOSA ----------\n");
+			printf("BBW-LOGGER: HO LETTO '%s'\n", socketData);
 			//char *command = strtok(strdup(socketData), " ");	// look: è necessario passare come argomento un duplicato della stringa
 			//deltaSpeed = getDeceleration(strdup(socketData));
 			char *command = strtok(strdup(socketData), " ");	
