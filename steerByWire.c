@@ -105,7 +105,6 @@ void createServer() {
   }
 }
 
-
 void sigTermHandler() {
   signal(SIGTERM,SIG_DFL);
   kill(pidBs,SIGTERM);

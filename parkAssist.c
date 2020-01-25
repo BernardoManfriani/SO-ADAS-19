@@ -40,7 +40,7 @@ int main(int argc, char *argv[]){
 
 	startMode = argv[1];
 
-	init();
+	init();		// connessione socket + apertura file
 
 	signal(SIGRESETPARK, resetParkHandler);
 	readSend();
@@ -64,13 +64,12 @@ void readSend(){
 		}
 
 		fread(buffer, 1, 4, readFd);
-		printf("SENSORE pa: sto inviando alla ecu\n ");
 		writeSocket(socketFd, buffer);
 
 	    for(int j=0; j < 4; j++){
-			fprintf(logP , "%02X", buffer[j]);
+			fprintf(logP, "%02X", buffer[j]);
 		}
-		fprintf(logP , "\n");
+		fprintf(logP, "\n");
 
 		sleep(1);
 	}
@@ -89,7 +88,6 @@ void init() {
 }
 
 void resetParkHandler() {
-	printf("ENTRO DENTRO RESET PARK HANDLER -------\n");
 	signal(SIGRESETPARK, resetParkHandler);
 	resetPark = true;
 }

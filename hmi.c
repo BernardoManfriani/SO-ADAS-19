@@ -44,10 +44,10 @@ int main(int argc, char *argv[]) {
     	pidOutputProcess = fork();
     	if(pidOutputProcess == 0){	// look: Tutti  i  comandi  inviati  dalla  Central  ECU  a  qualunque  componente  sono 
     						// inseriti  in  un  file  di  log  ECU.log  e stampati a video tramite la HMI.
-    		system("rm -f ECU.log; touch ECU.log; gnome-terminal -- bash -c \"echo HMI OUTPUT:; tail -F ECU.log; bash\"");
+    		system("rm -f utility.data; touch utility.data");
+    		system("rm -f ECU.log; touch ECU.log; gnome-terminal -- sh -c \"echo HMI OUTPUT:; tail -F ECU.log; bash\"");
 
     	} else {
-	    	// -----------------------------------------------------------------
 	        setpgid(0,0);			// crea gruppo processi con "leader gruppo" ./ecu - con una kill all child processes are killed
 	        argv[0] = "./ecu";
 	        execv(argv[0], argv);	// argv[] = ["./ecu", "NORMALE o ARTIFICIALE"]
@@ -56,8 +56,9 @@ int main(int argc, char *argv[]) {
 	} else { // HMI parent
 	    	signal(SIGDANGER, dangerHandler);
 	    	signal(SIGPARK, sigEndParkHandler);
+
 	        start();
-	        wait(NULL);			// aspetta finisca il processo figlio
+	        wait(NULL);			// look: aspetta finisca il processo figlio -------------- PROVARE A COMMMENTARE RIGA
 	        printf("\nHMI CONCLUSA - passo e chiudo\n");
 	}
 
@@ -95,7 +96,7 @@ void start(){
 
 void dangerHandler() {
 	signal(SIGDANGER, dangerHandler);
-	kill(-ecuPid, SIGKILL);		// -ecuPid in modo da riferirsi all'intero gruppo
+	kill(-ecuPid, SIGTERM);		// -ecuPid in modo da riferirsi all'intero gruppo
 
 	ecuPid = fork();
     if(ecuPid < 0) {

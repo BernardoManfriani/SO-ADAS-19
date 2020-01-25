@@ -3,6 +3,8 @@
 #include<string.h>
 #include<unistd.h>
 
+#include<signal.h>
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -10,17 +12,20 @@
 #include "socketManager.h"
 #include "fileManager.h"
 
-int currentSpeed;
 int socketFd;
+long int lastLineRead;
 FILE *readFd;
 FILE *logFd;
 
 void closeClient(int s);
 
 void readFile(FILE *fd,FILE *fc);
+void writeLastLineRead();
+void getLastLineRead();
+char* readLine(FILE *fp);
 
 int main() {
-  currentSpeed = 0;
+  signal(SIGTERM, writeLastLineRead);
   printf("SENSORE fwc: attivo\n");
 
   socketFd = connectClient("fwcSocket");
@@ -28,6 +33,11 @@ int main() {
 
   openFile("frontCamera.data","r", &readFd);      // look: PROSSIMO PASSO - APRIRE FILE .data 1.LEGGERE ROBA E SCRIVERE SU LOG
   openFile("camera.log","w", &logFd);
+
+  //system("rm -f utility.data");
+  /*if (lastLineRead != 0) */getLastLineRead();
+
+  //printf("------------------------ ULTIMA RIGA LETTA: '%li' --------------------\n", lastLineRead);
 
   readFile(readFd, logFd);            // leggo file -> 1.Scrivo su fwcSocket 2.Scrivo su .log
 
@@ -45,7 +55,7 @@ void readFile(FILE *fd,FILE *fc){
   char buf[20];               // look: 20 va è sufficiente?
   char *res;
   int i = 0;
-  while(i < 20) {
+  while(i < 12) {
   	res=fgets(buf, 10, fd);
     size_t lastIndex = strlen(buf) - 1;
     buf[lastIndex] = '\0';
@@ -56,7 +66,43 @@ void readFile(FILE *fd,FILE *fc){
   	fprintf(fc, "%s\n", buf);		    // scrivo su file .log
    	writeSocket(socketFd, buf);		// scrivo su socket fwc <--> ecu
 
-    sleep(3);           // look: dovrà essere 10 secondi
+    sleep(5);           // look: dovrà essere 10 secondi
     i++;
   }
+}
+
+void writeLastLineRead(){
+  FILE *fileUtility;
+  openFile("utility.data", "w", &fileUtility);
+  lastLineRead = ftell(readFd);
+  fprintf(fileUtility, "%ld\n", lastLineRead);
+  fclose(fileUtility);
+  fclose(readFd);
+  exit(0);
+}
+
+
+void getLastLineRead() {
+  FILE *fileUtility;
+  openFile("utility.data", "r", &fileUtility);
+  char *lineNumber;
+
+  lineNumber = readLine(fileUtility);
+  lastLineRead = atol(lineNumber);
+
+  fclose(fileUtility);
+  fseek(readFd, lastLineRead, SEEK_SET);
+}
+
+char* readLine(FILE *fp){   // Long signed integer Capable of containing at least [−2,147,483,647, +2,147,483,647] => 10cifre o 8 ?!?!
+  char *lineBuffer = (char *)malloc(sizeof(char) * 10);
+  int count = 0;
+
+  char ch = getc(fp);
+  while ((ch != '\n') && (ch != EOF)) {
+    lineBuffer[count] = ch;
+    count++;  
+    ch = getc(fp);
+  }
+    return lineBuffer;
 }

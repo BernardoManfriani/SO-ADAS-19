@@ -109,7 +109,6 @@ void createServer() {
 
 			printf("ATTUATORE-SERVER bbw-%d: wait to read something from CLIENT\n", getpid());
 	 		while(readSocket(clientFd, data)) {
-				printf("BBW server READ SOMETHING\n");
 	        	manageData(data);
 			}
 
@@ -146,21 +145,11 @@ void writeLog() {
 	int bytesRead;
 	char socketData [30];
 
-	int x = 0;
-	while(1) {							// look: per ora leggo solo 20 volte dalla pipe
+	while(1) {
 		if(read(pipeFd[READ], socketData, 30) > 0) {
-			printf("BBW-LOGGER: HO LETTO '%s'\n", socketData);
-			//char *command = strtok(strdup(socketData), " ");	// look: è necessario passare come argomento un duplicato della stringa
-			//deltaSpeed = getDeceleration(strdup(socketData));
-			char *command = strtok(strdup(socketData), " ");	
-
+			//printf("BBW-LOGGER: HO LETTO '%s'\n", socketData);
+			char *command = strtok(strdup(socketData), " ");	// E' necessario passare come argomento un duplicato della stringa
 			deltaSpeed = getDeceleration(socketData);
-
-			/*if(strcmp(command, "PARCHEGGIO") == 0) {
-				printf("BBW ------ STO PARCHEGGIANDO");
-				brakeTillStop(deltaSpeed);
-				deltaSpeed = 0;
-			}*/
 
 			while(deltaSpeed > 0) {
 			    //printf("ATTUATORE bbw: DECREMENTO 5 => deltaSpeed = %d\n", deltaSpeed);
@@ -168,7 +157,6 @@ void writeLog() {
 				fflush(fileLog);
 
 				deltaSpeed = deltaSpeed - 5;
-				x = x+1;
 				sleep(1);
 			}
 		} else {
@@ -176,7 +164,6 @@ void writeLog() {
 		    fprintf(fileLog, "%s", "NO ACTION\n");
 			fflush(fileLog);
 
-			x = x+1;
 			sleep(1);
 		}
 	}
