@@ -57,6 +57,8 @@ int main(int argc, char *argv[]) {
 	    	signal(SIGDANGER, dangerHandler);
 	    	signal(SIGPARK, sigEndParkHandler);
 
+	    	signal(SIGINT, sigEndParkHandler);		// premere ctrl+c fa chiudere tutti i processi
+
 	        start();
 	        wait(NULL);			// look: aspetta finisca il processo figlio -------------- PROVARE A COMMMENTARE RIGA
 	        printf("\nHMI CONCLUSA - passo e chiudo\n");

@@ -46,12 +46,10 @@ int main() {
     printf("ATTUATORE bbw: attivo\n");
     pidEcu = getppid();
 
-    signal(SIGDANGER, dangerHandler);
+	openFile("brake.log", "w", &fileLog);		// apro file - può arrivare un segnale di pericolo ancora prima di aver "toccato freno"
     initPipe();
 
 	fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);	// rende la read su pipe non bloccante
-
-	openFile("brake.log", "w", &fileLog);		// apro file - può arrivare un segnale di pericolo ancora prima di aver "toccato freno"
 
 	pidWriter = fork();
 	if(pidWriter == 0) {			// child process writer on brake.log file
@@ -59,8 +57,9 @@ int main() {
 		close(pipeFd[WRITE]);
 		writeLog();
 		close(pipeFd[READ]);
-		fclose(fileLog);
+		//fclose(fileLog);	--------------------------------------------------------------------------------------------
 	} else {				// father process listener on socket
+    	signal(SIGDANGER, dangerHandler);
 		close(pipeFd[READ]);
         createServer();
 
@@ -74,7 +73,8 @@ int main() {
 
 void dangerHandler() {
     //signal(SIGDANGER, dangerHandler);			// look: resettare signal ???
-	fprintf(fileLog, "%s\n", "ARRESTO AUTO");
+	fprintf(fileLog, "ARRESTO AUTO\n");
+	//fflush(fileLog);
 	kill(getpid(), SIGTERM);		// uccide processo
 	// look: uccidere anche processo writer !?
 }

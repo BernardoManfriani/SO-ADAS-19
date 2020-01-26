@@ -31,11 +31,10 @@ int main() {
   socketFd = connectClient("fwcSocket");
   printf("SENSORE fwc: connection open\n");
 
-  openFile("frontCamera.data","r", &readFd);      // look: PROSSIMO PASSO - APRIRE FILE .data 1.LEGGERE ROBA E SCRIVERE SU LOG
+  openFile("frontCamera.data","r", &readFd);
   openFile("camera.log","w", &logFd);
 
-  //system("rm -f utility.data");
-  /*if (lastLineRead != 0) */getLastLineRead();
+  getLastLineRead();  // setto lastLineRead con il valore dell'ultima riga letta da file frontCamera.data (valore scritto in utility.data)
 
   //printf("------------------------ ULTIMA RIGA LETTA: '%li' --------------------\n", lastLineRead);
 
@@ -52,7 +51,7 @@ void closeClient(int socketFd) {
 }
 
 void readFile(FILE *fd,FILE *fc){
-  char buf[20];               // look: 20 va è sufficiente?
+  char buf[20];               // look: 20 va  bene? è sufficiente?
   char *res;
   int i = 0;
   while(i < 12) {
@@ -94,7 +93,7 @@ void getLastLineRead() {
   fseek(readFd, lastLineRead, SEEK_SET);
 }
 
-char* readLine(FILE *fp){   // Long signed integer Capable of containing at least [−2,147,483,647, +2,147,483,647] => 10cifre o 8 ?!?!
+char* readLine(FILE *fp){   // Long signed integer Capable of containing at least [−2,147,483,647, +2,147,483,647] => 10 cifre o 8 ?!?!
   char *lineBuffer = (char *)malloc(sizeof(char) * 10);
   int count = 0;
 

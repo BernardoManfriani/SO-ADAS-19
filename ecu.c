@@ -239,7 +239,7 @@ void fwcDataManager(pid_t pidEcuClientFwcManager){
 
 		printf("CHIUSO MANAGER FCW\n");
 		close(pipe_fwc_data[READ]);		// look: ha senso metterlo? non verrà mai eseguito
-		close(pipe_ecu_logger[WRITE]);
+		//close(pipe_ecu_logger[WRITE]);
         exit(0);
     }
 }
@@ -351,6 +351,9 @@ void processFwcData(char *data) {
 
 		currentSpeed = 0;
 		kill(pidBbw, SIGDANGER);	// invio segnale di pericolo a break by wire
+
+		// look: ASPETTARE BBW CHE FINISCA DI SCRIVERE SU FILE?!
+
 		kill(pidHmi, SIGDANGER);	// invio segnale di pericolo a HMI
 		//writeSocket(sbwSocketFd, data);
 	} else {	// viene letto un numero
@@ -450,7 +453,7 @@ void ecuLogger() {
 	char ecuCommand[MAX_DATA_SIZE];
 
 	openFile("ECU.log","a", &ecuLogFd);			// "a": open file for appending
-	close(pipe_ecu_logger[WRITE]);
+	//close(pipe_ecu_logger[WRITE]);
 
 	int updatedSpeed;
 

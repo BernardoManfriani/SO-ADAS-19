@@ -19,7 +19,7 @@
 
 pid_t pidBs;
 
-FILE * logS;  //Camera Descriptor
+FILE * fileLog;  //Camera Descriptor
 
 //char logAction[30];
 
@@ -49,15 +49,20 @@ void action(char *data){
     kill(pidBs, SIGCONT);
 
     for (int i = 0; i < 4; i++) {
-      //printf(".\n");
+
+      fprintf(fileLog, "STO GIRANDO A %s\n", data);
+      fflush(fileLog);
+
       sleep(1);
-      fprintf(logS, "STO GIRANDO A %s\n", data);
     }
 
     kill(pidBs, SIGSTOP);
   } else {
+
+    fprintf(fileLog, "NO ACTION\n");
+    fflush(fileLog);
+    
     sleep(1);
-    fprintf(logS, "NO ACTION\n");
   }
 }
 
@@ -84,8 +89,7 @@ void createServer() {
   clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
   printf("ATTUATORE-SERVER sbw: accept client\n");
 
-  //fcntl(clientFd,F_SETFL,O_NONBLOCK); //Rende la read non bloccante    //ELIMINARE: Da rimettere non bloccante
-  openFile("steer.log","w", &logS);
+  openFile("steer.log","w", &fileLog);
   char data[10];
 
   while (1) {/* Loop forever */ /* Accept a client connection */
@@ -96,7 +100,7 @@ void createServer() {
     } else {
       //printf("ATTUATORE-SERVER sbw: end to read socket\n");
 
-      fclose(logS);
+      fclose(fileLog);
       close (clientFd); /* Close the socket */
       exit (0);
 

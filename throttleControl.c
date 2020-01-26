@@ -110,7 +110,7 @@ void writeLog() {
 			deltaSpeed = getAcceleration(strdup(socketData));
 
 			while(deltaSpeed > 0) {
-			    //printf("ATTUATORE tc: AUMENTO 5 => deltaSpeed = %d\n", deltaSpeed);
+			    printf("ATTUATORE tc: AUMENTO 5 => deltaSpeed = %d\n", deltaSpeed);
 			    fprintf(fileLog, "%s", "AUMENTO 5\n");
 				fflush(fileLog);
 
