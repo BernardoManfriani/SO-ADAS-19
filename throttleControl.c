@@ -5,13 +5,13 @@
 
 #include<signal.h>
 
-#include <sys/wait.h>
+//#include <sys/wait.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
-//#include <fcntl.h>
+#include <fcntl.h>
 
 #include "socketManager.h"
 #include "fileManager.h"
@@ -21,8 +21,8 @@
 #define WRITE 1
 
 
-int status;	//pipe status
-int pipeFd[2]; // pipe fd
+int status;
+int pipeFd[2];
 pid_t pidWriter;
 FILE *fileLog;
 
@@ -30,32 +30,35 @@ int deltaSpeed;
 
 void initPipe();
 void createServer();
-void manageSocketData(char *data);
 void writeLog();
 
+int getAcceleration(char *socketData);
+
 void lettorePipe();
+void sigTermHandler();
 
 int main() {
     printf("ATTUATORE tc: attivo\n");
 
-    createServer();
+    initPipe();
 
-    /*initPipe();
-
-	// fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);	//rende la read non bloccante
+	fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);	// rende la read su pipe non bloccante
 
 	pidWriter = fork();
-	if(pidWriter == 0) {			// child process writer on throttle.log file
-		printf("ATTUATORE tc: write in throttle.log\n");
+	if(pidWriter == 0) {			// child process writer on brake.log file
 		close(pipeFd[WRITE]);
 		writeLog();
 		close(pipeFd[READ]);
-		return 0;				// look: perchè return? 
+    	printf("ATTUATORE tc: write logger TERMINO\n");
 	} else {				// father process listener on socket
-		close(pipeFd[READ]); 
+		signal(SIGTERM, sigTermHandler);
+
+		close(pipeFd[READ]);
         createServer();
 		close(pipeFd[WRITE]);
-	}*/
+   		printf("ATTUATORE tc: tc server TERMINO\n");
+	}
+
 	return 0;
 }
 
@@ -65,9 +68,6 @@ void createServer() {
     struct sockaddr_un clientUNIXAddress; /*Client address */
     struct sockaddr* serverSockAddrPtr; /*Ptr to server address*/
     struct sockaddr* clientSockAddrPtr;/*Ptr to client address*/
-
-    /* Ignore death-of-child signals to prevent zombies */
-    //signal (SIGCHLD, SIG_IGN);								// look: che cazzo fa questa riga?
 
     serverSockAddrPtr = (struct sockaddr*) &serverUNIXAddress;
     serverLen = sizeof (serverUNIXAddress);
@@ -88,11 +88,9 @@ void createServer() {
 		printf("ATTUATORE-SERVER tc: accept client\n");
 
         char data[30];
-
 		printf("ATTUATORE-SERVER tc: wait to read something\n");
         while(readSocket(clientFd, data)) {
-            //manageSocketData(data);
-            printf("ATTUATORE-SERVER tc: leggo = '%s'\n", data);
+            write(pipeFd[WRITE], data, strlen(data)+1);
         }
 
 		printf("ATTUATORE-SERVER tc: end to read socket\n");
@@ -102,27 +100,43 @@ void createServer() {
     }
 }
 
-void manageSocketData(char *data) {
-    printf("ATTUATORE tc: leggo da socket = %s -> scrivo su pipe\n", data);
-	write(pipeFd[WRITE], data, 30);     // write on pipe
-}
-
 void writeLog() {
+	char socketData[30];
 	openFile("throttle.log", "w", &fileLog);
 
-	int bytesRead;
-	char socketData [30];
-	// char *socketData;		// ----------------- PERCHE CON QUESTO NON FUNZIONA -----------------	//
-	while(1) {
-		bytesRead = read (pipeFd[READ], socketData, 30);
-		if(bytesRead != 0){
-			printf ("Read %d bytes: %s\n", bytesRead, socketData);
-		    fprintf(fileLog, "%s", socketData);
-			fflush(fileLog);		// SE COMMENTO NON SCRIVE SU FILE-- CAZZO PERCHEEEEE TROIO -- (non libera buffer, e quindi?!)
+	int x = 0;
+	while(1) {							// look: per ora leggo solo 15 volte dalla pipe
+		if(read(pipeFd[READ], socketData, 30) > 0){
+			deltaSpeed = getAcceleration(strdup(socketData));
+
+			while(deltaSpeed > 0) {
+			    //printf("ATTUATORE tc: AUMENTO 5 => deltaSpeed = %d\n", deltaSpeed);
+			    fprintf(fileLog, "%s", "AUMENTO 5\n");
+				fflush(fileLog);
+
+				deltaSpeed = deltaSpeed - 5;
+				x = x+1;
+				sleep(1);
+			}
+
+		} else {
+			//printf("ATTUATORE tc: NO ACTION\n");
+		    fprintf(fileLog, "%s", "NO ACTION\n");
+			fflush(fileLog);
+
+			x = x+1;
+			sleep(1);
 		}
-		sleep(1);
 	}
-	
+
+	fclose(fileLog);
+}
+
+int getAcceleration(char *socketData) {
+	char *accelerazione = strtok(socketData," ");			// look: prende comando
+	accelerazione = strtok(NULL," ");		// look: prende numero del comando
+
+	return atoi(accelerazione);
 }
 
 void initPipe() {
@@ -131,4 +145,9 @@ void initPipe() {
 		printf("Pipe error\n");
 		exit(1);
 	}
+}
+
+void sigTermHandler() {
+  kill(pidWriter, SIGTERM);
+  exit(0);
 }

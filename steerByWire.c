@@ -1,10 +1,14 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<unistd.h>
+#include<string.h>
+#include<fcntl.h>
+#include<signal.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 
 #include "socketManager.h"
 #include "fileManager.h"
@@ -13,52 +17,100 @@
 #define READ 0
 #define WRITE 1
 
+pid_t pidBs;
+
+FILE * fileLog;  //Camera Descriptor
+
+//char logAction[30];
+
 void createServer();
+void action(char *a);
+void sigTermHandler();
 
-int main() {
-    printf("ATTUATORE sbw: attivo\n");
+int main(int argc, char *argv[]) {
 
+  printf("ATTUATORE sbw: attivo\n");
+
+  pidBs = fork();
+  if(pidBs == 0) {
+      argv[0] = "./bs"; 
+      execv(argv[0],argv);
+  } else {
+    signal(SIGTERM, sigTermHandler);
     createServer();
+  }
 
-	return 0;
+  return 0;
+}
+
+void action(char *data){
+
+  if (strcmp(data,"DESTRA") == 0 || strcmp(data, "SINISTRA") == 0){
+    kill(pidBs, SIGCONT);
+
+    for (int i = 0; i < 4; i++) {
+
+      fprintf(fileLog, "STO GIRANDO A %s\n", data);
+      fflush(fileLog);
+
+      sleep(1);
+    }
+
+    kill(pidBs, SIGSTOP);
+  } else {
+
+    fprintf(fileLog, "NO ACTION\n");
+    fflush(fileLog);
+    
+    sleep(1);
+  }
 }
 
 void createServer() {
-    int serverFd, clientFd, serverLen, clientLen;
-    struct sockaddr_un serverUNIXAddress; /*Server address */
-    struct sockaddr_un clientUNIXAddress; /*Client address */
-    struct sockaddr* serverSockAddrPtr; /*Ptr to server address*/
-    struct sockaddr* clientSockAddrPtr;/*Ptr to client address*/
+  int serverFd, clientFd, serverLen, clientLen;
+  struct sockaddr_un serverUNIXAddress; /*Server address */
+  struct sockaddr_un clientUNIXAddress; /*Client address */
+  struct sockaddr* serverSockAddrPtr; /*Ptr to server address*/
+  struct sockaddr* clientSockAddrPtr;/*Ptr to client address*/
 
-    serverSockAddrPtr = (struct sockaddr*) &serverUNIXAddress;
-    serverLen = sizeof (serverUNIXAddress);
-    clientSockAddrPtr = (struct sockaddr*) &clientUNIXAddress;
-    clientLen = sizeof (clientUNIXAddress);
-    serverFd = socket (AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL);
+  serverSockAddrPtr = (struct sockaddr*) &serverUNIXAddress;
+  serverLen = sizeof (serverUNIXAddress);
+  clientSockAddrPtr = (struct sockaddr*) &clientUNIXAddress;
+  clientLen = sizeof (clientUNIXAddress);
+  serverFd = socket (AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL);
 
-    serverUNIXAddress.sun_family = AF_UNIX; /* Set domain type */
-    strcpy (serverUNIXAddress.sun_path, "sbwSocket"); /* Set name */
-    unlink ("sbwSocket"); /* Remove file if it already exists */
-    bind (serverFd, serverSockAddrPtr, serverLen);/*Create file*/
-    listen (serverFd, 1); /* Maximum pending connection length */
+  serverUNIXAddress.sun_family = AF_UNIX; /* Set domain type */
+  strcpy (serverUNIXAddress.sun_path, "sbwSocket"); /* Set name */    //ELIMINARE: Questo sbwSocket cos'è? Va levato?
+  unlink ("sbwSocket"); /* Remove file if it already exists */        //ELIMINARE: Questo sbwSocket cos'è? Va levato?
+  bind (serverFd, serverSockAddrPtr, serverLen);/*Create file*/
+  listen (serverFd, 1); /* Maximum pending connection length */
 
-    while (1) {/* Loop forever */ /* Accept a client connection */
-		printf("ATTUATORE-SERVER sbw: wait client\n");
+  printf("ATTUATORE-SERVER sbw: wait client\n");
+  clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
+  printf("ATTUATORE-SERVER sbw: accept client\n");
 
-		clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
-		printf("ATTUATORE-SERVER sbw: accept client\n");
+  openFile("steer.log","w", &fileLog);
+  char data[10];
 
-        char data[30];
+  while (1) {/* Loop forever */ /* Accept a client connection */
+    //printf("ATTUATORE-SERVER sbw: wait to read something\n");
+    if(readSocket(clientFd, data)){
+      //printf("ATTUATORE-SERVER sbw: leggo = '%s'\n", data);
+      action(data);
+    } else {
+      //printf("ATTUATORE-SERVER sbw: end to read socket\n");
 
-		printf("ATTUATORE-SERVER sbw: wait to read something\n");
-        while(readSocket(clientFd, data)) {
-            //manageSocketData(data);
-            printf("ATTUATORE-SERVER sbw: leggo = '%s'\n", data);
-        }
+      fclose(fileLog);
+      close (clientFd); /* Close the socket */
+      exit (0);
 
-		printf("ATTUATORE-SERVER sbw: end to read socket\n");
-
-        close (clientFd); /* Close the socket */
-        exit (0); /* Terminate */
     }
+
+  }
+}
+
+void sigTermHandler() {
+  signal(SIGTERM,SIG_DFL);
+  kill(pidBs,SIGTERM);
+  exit(0);
 }
