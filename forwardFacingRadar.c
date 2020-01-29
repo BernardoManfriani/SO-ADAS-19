@@ -3,11 +3,12 @@
 #include<string.h>
 #include<unistd.h>
 
-#include "socketManager.h"
+#include<signal.h>
 
-void test();
-void readFromFile();
-void writeRadarLog(FILE *, unsigned char data[]);
+#include "../lib/socketManager.h"
+#include "../lib/fileManager.h"
+
+char *startMode;
 
 FILE *readFd;
 FILE *logFd;
@@ -17,44 +18,45 @@ int socketFd;
 unsigned char data[24];
 int bytesRead;
 
-char *startMode;
+void init();
+void sigTermHandler();
+
+void readFromFile();
+void writeRadarLog(FILE *, unsigned char data[]);
 
 
 int main(int argc, char *argv[]){
-	printf("SENSORE ffr: attivo\n");
-
 	startMode = argv[1];
 
-	socketFd = connectClient("ffrSocket");
-  	printf("SENSORE ffr: connection open\n");
+	signal(SIGTERM, sigTermHandler);
+	init();
 
 	readFromFile();
 
-	close(socketFd);
+}
 
-	return 0;
+void init() {
+	socketFd = connectClient("ffrSocket");
+
+	if(strcmp(startMode, "NORMALE") == 0) {
+ 		openFile("/dev/random","r", &readFd);
+	} else {
+ 		openFile("../data/randomARTIFICIALE.binary","r", &readFd);
+	}
+
+	openFile("../log/radar.log","w", &logFd);
 }
 
 void readFromFile() {
-	if(strcmp(startMode, "NORMALE") == 0) {
-		readFd = fopen("/dev/random", "r");		// look: controllare se errore in apertura file
-	} else {
-		readFd = fopen("randomARTIFICIALE.binary", "r");
-	}
-
-	logFd = fopen("radar.log", "w");
-
-	int i = 0;
-	while(i < 5) {
+	while(1) {
 		bytesRead = fread(data, 1, 24, readFd);
 		if (bytesRead == 24) {
-			writeSocket(socketFd, data);		// scrivo su socket ffr <--> ecu
+			writeSocket(socketFd, data);		// scrivo su socket ffrSocket
 		    writeRadarLog(logFd, data);
 			fflush(logFd);
 		}
 
 		sleep(2);
-		i++;
 	}
 
 	fclose(readFd);
@@ -66,4 +68,10 @@ void writeRadarLog(FILE *logFd, unsigned char data[]) {
         fprintf(logFd, "%02X", data[i]);
     }
     fprintf(logFd, "\n");
+}
+
+void sigTermHandler(){
+	fclose(readFd);
+	fclose(logFd);
+	exit(0);
 }

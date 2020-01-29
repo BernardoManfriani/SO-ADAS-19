@@ -1,7 +1,6 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
-#include<stdbool.h>
 #include<unistd.h>
 
 #include <fcntl.h>
@@ -12,64 +11,59 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#include "socketManager.h"
-#include "fileManager.h"
+#include "../lib/socketManager.h"
+#include "../lib/fileManager.h"
 
-#define SIGENDPARK SIGUSR1
-#define SIGRESETPARK SIGUSR2
-
-#define PARKING_TIME 10
+#define SIGRESETPARK SIGINT
+#define PARKING_TIME 30
 
 int socketFd;
 
 pid_t pidEcu;
 
 FILE *readFd;
-FILE *logP;		//assist.log descriptor
+FILE *logFd;		//assist.log descriptor
 
 char *startMode;
-bool resetPark = false;
+int resetPark = 0;
 
 void init();
-void resetParkHandler();
 void readSend();
 
-int main(int argc, char *argv[]){
-	printf("SENSORE pa: attivo\n");
-	pidEcu = getppid();
+void sigTermHandler();
+void resetParkHandler();
 
+int main(int argc, char *argv[]){
+	pidEcu = getppid();
 	startMode = argv[1];
+	
+	signal(SIGTERM, sigTermHandler);
 
 	init();		// connessione socket + apertura file
 
-	signal(SIGRESETPARK, resetParkHandler);
 	readSend();
+    kill(pidEcu, SIGUSR1); 	// comunico ad ECU che ha finito
 
-    kill(pidEcu, SIGENDPARK); 	// COMUNICA alla ECU che ha finito
-
-	fclose(readFd);
-	fclose(logP);
-
-	return 0;
+    pause();	// mi assicuro di terminare il processo con il relativo handler
 }
 
 void readSend(){
+	signal(SIGRESETPARK, resetParkHandler);
 	unsigned char buffer[4];
 
 	for(int i = 0; i < PARKING_TIME; i++){
 		if(resetPark) {
-			resetPark = false;
+			resetPark = 0;
 			i = 0;
-			printf("RESET PARK HANDLER METTE i = %d\n", i);
 		}
 
 		fread(buffer, 1, 4, readFd);
 		writeSocket(socketFd, buffer);
 
 	    for(int j=0; j < 4; j++){
-			fprintf(logP, "%02X", buffer[j]);
+			fprintf(logFd, "%02X", buffer[j]);
 		}
-		fprintf(logP, "\n");
+		fprintf(logFd, "\n");
 
 		sleep(1);
 	}
@@ -77,17 +71,23 @@ void readSend(){
 
 void init() {
 	socketFd = connectClient("paSocket");
-  	printf("SENSORE pa: connection open\n");
 
-	if(strcmp(startMode, "NORMALE") == 0) {			// apertura file lettura/scrittura
-		readFd = fopen("/dev/urandom", "r");
+	if(strcmp(startMode, "NORMALE") == 0) {
+ 		openFile("/dev/urandom","r", &readFd);
 	} else {
-		readFd = fopen("urandomARTIFICIALE.binary", "r");
+ 		openFile("../data/urandomARTIFICIALE.binary","r", &readFd);
 	}
-	openFile("assist.log","w", &logP);
+	openFile("../log/assist.log","w", &logFd);
 }
 
 void resetParkHandler() {
 	signal(SIGRESETPARK, resetParkHandler);
-	resetPark = true;
+	printf("---------------RESETTO-----------------\n");
+	resetPark = 1;
+}
+
+void sigTermHandler(){
+	fclose(readFd);
+	fclose(logFd);
+	exit(0);
 }

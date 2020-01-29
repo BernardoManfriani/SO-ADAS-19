@@ -3,11 +3,10 @@
 #include<string.h>
 #include<unistd.h>
 
-#include "socketManager.h"
+#include<signal.h>
 
-void test();
-void readFromFile();
-void writeCamerasLog(FILE *, unsigned char data[]);
+#include "../lib/socketManager.h"
+#include "../lib/fileManager.h"
 
 FILE *readFd;
 FILE *logFd;
@@ -19,15 +18,17 @@ int bytesRead;
 
 char *startMode;
 
+void sigTermHandler();
+void init();
+void readFromFile();
+void writeCamerasLog(FILE *, unsigned char data[]);
+
 
 int main(int argc, char *argv[]){
-	printf("SENSORE svc: attivo\n");
-
 	startMode = argv[1];
+	signal(SIGTERM, sigTermHandler);
 
-	socketFd = connectClient("svcSocket");
-  	printf("SENSORE svc: connection open\n");
-  	printf("SENSORE svc: modalità avvio %s\n", argv[1]);
+	init();	
 
 	readFromFile();
 
@@ -36,28 +37,32 @@ int main(int argc, char *argv[]){
 	return 0;
 }
 
-void readFromFile() {
+void init() {
+	socketFd = connectClient("svcSocket");
+
 	if(strcmp(startMode, "NORMALE") == 0) {
-		readFd = fopen("/dev/urandom", "r");		// look: controllare se errore in apertura file
+ 		openFile("/dev/urandom","r", &readFd);
 	} else {
-		readFd = fopen("urandomARTIFICIALE.binary", "r");
+ 		openFile("../data/urandomARTIFICIALE.binary","r", &readFd);
 	}
 
-	logFd = fopen("radar.log", "w");
+ 	openFile("../log/radar.log","w", &logFd);
+}
 
-	int i = 0;
-	while(i < 5) {
+void readFromFile() {
+
+	while(1) {
 		bytesRead = fread(data, 1, 16, readFd);
 		if (bytesRead == 0) {
 			perror("svc: errore in lettura");
 			exit(1);
 		}
-		writeSocket(socketFd, data);		// scrivo su socket svc <--> ecu
-	  writeCamerasLog(logFd, data);
+
+		writeSocket(socketFd, data);		// scrivo su socket svcSocket
+	  	writeCamerasLog(logFd, data);
 		fflush(logFd);
 
 		sleep(1);
-		i++;
 	}
 
 	fclose(readFd);
@@ -69,4 +74,9 @@ void writeCamerasLog(FILE *logFd, unsigned char data[]) {
     fprintf(logFd, "%02X", data[i]);
   }
   fprintf(logFd, "\n");
+}
+
+void sigTermHandler(){
+  fclose(logFd);
+  exit(0);
 }
