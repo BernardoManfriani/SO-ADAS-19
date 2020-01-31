@@ -34,7 +34,7 @@ pid_t pidHmi, pidEcu;
 // PID ATTUATORI
 pid_t pidTc, pidBbw, pidSbw;
 
-// PID SENSORI - Io lo toglierei perchè i pid servono per inviare il segnale look: non considero pidSvc, pidPa perchè processi attivati al bisogno e non all'avvio del sistema (?)
+// PID SENSORI -
 pid_t pidFwc, pidFfr, pidPa, pidSvc;
 
 // PID ECU-CLIENTS  - clienti del socket aperto con gli attuatori
@@ -158,8 +158,8 @@ void startEcuHandler() {
 
 void creaSensori() {
 	char *argv[3];
-	argv[1] = startMode;			// look: viene passato a tutti i sensori => noi lo utilizzeremo solo dove necessario
-	argv[2] = NULL;			// look: ultimo elemento deve essere un null pointer
+	argv[1] = startMode;
+	argv[2] = NULL;
 
 	argv[0] = "./fwc";
 	pidFwc = fork();
@@ -172,8 +172,8 @@ void creaSensori() {
 
 void creaAttuatori() {
 	char *argv[3];
-	argv[1] = startMode;			// look: viene passato a tutti i sensori => noi lo utilizzeremo solo dove necessario
-	argv[2] = NULL;			// look: ultimo elemento deve essere un null pointer
+	argv[1] = startMode;
+	argv[2] = NULL;
 
     argv[0] = "./tc";
     pidTc = fork();
@@ -183,7 +183,7 @@ void creaAttuatori() {
     pidBbw = fork();
 	creaComponente(pidBbw, argv);			// Attuatore brake by wire*/
 
-    argv[0] = "./sbw";					// look: non funziona steer by wire - non mi legge null => non stampa NO ACTION
+    argv[0] = "./sbw";
     pidSbw = fork();
 	creaComponente(pidSbw, argv);			// Attuatore steer by wire*/
 }
@@ -494,7 +494,7 @@ void endParkingHandler() {
 	signal(SIGPARK, endProgram);
 
 	printf("\nparcheggio in corso...\n");
-	// Arrivati a questo punto, velocità = 0, Central ECU attiva Park assist ultrasonic sensors e look: Surround view cameras
+	// Arrivati a questo punto, velocità = 0, Central ECU attiva Park assist ultrasonic sensors e Surround view cameras
     kill(pidPa, SIGCONT);
     kill(pidSvc, SIGCONT);
 }
