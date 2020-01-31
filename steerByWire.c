@@ -10,55 +10,56 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 
-
-#include "socketManager.h"
-#include "fileManager.h"
+#include "../lib/socketManager.h"
+#include "../lib/fileManager.h"
 
 #define DEFAULT_PROTOCOL 0
 #define READ 0
 #define WRITE 1
 
+pid_t pidBs;
+pid_t pidWriter;
 
+int status;
+int pipeFd[2];
 
-pid_t pid_sterzata;
+FILE * fileLog;
 
-FILE * logS;  //Camera Descriptor
-
-//char logAction[30];
-
+void initPipe();
 void createServer();
 
-void action(pid_t pid_sterzata, char *a);
+void writeLog();
+void sigTermHandler();
 
-int main() {
 
-  printf("ATTUATORE sbw: attivo\n");
+int main(int argc, char *argv[]) {
+  initPipe();
 
-  createServer();
+  fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);   // rende la read su pipe non bloccante
 
-  return 0;
-}
+  pidBs = fork();
+  if(pidBs == 0) {
+      argv[0] = "./bs"; 
+      execv(argv[0],argv);
 
-void action(pid_t  pid_sterzata, char *data){
-
-  if (strcmp(data,"DESTRA") == 0 || strcmp(data, "SINISTRA") == 0){
-    printf("Sterzata\n");
-    for (int i = 0; i < 4; i++) {
-      printf(".\n");
-      sleep(1);
-      fprintf(logS, "STO GIRANDO A %s\n", data);
-    }
   } else {
-    printf("Dritto\n");
-    sleep(1);
-    fprintf(logS, "NO ACTION\n");
+
+    pidWriter = fork();
+    if(pidWriter == 0) {      // child process writer on brake.log file
+      close(pipeFd[WRITE]);
+      writeLog();
+      close(pipeFd[READ]);
+
+    } else {        // father process listener on socket
+      signal(SIGTERM, sigTermHandler);
+
+      close(pipeFd[READ]);
+      createServer();
+    }
   }
-
 }
-
 
 void createServer() {
-
   int serverFd, clientFd, serverLen, clientLen;
   struct sockaddr_un serverUNIXAddress; /*Server address */
   struct sockaddr_un clientUNIXAddress; /*Client address */
@@ -72,39 +73,59 @@ void createServer() {
   serverFd = socket (AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL);
 
   serverUNIXAddress.sun_family = AF_UNIX; /* Set domain type */
-  strcpy (serverUNIXAddress.sun_path, "sbwSocket"); /* Set name */    //ELIMINARE: Questo sbwSocket cos'è? Va levato?
-  unlink ("sbwSocket"); /* Remove file if it already exists */        //ELIMINARE: Questo sbwSocket cos'è? Va levato?
+  strcpy (serverUNIXAddress.sun_path, "sbwSocket"); /* Set name */
+  unlink ("sbwSocket"); /* Remove file if it already exists */
   bind (serverFd, serverSockAddrPtr, serverLen);/*Create file*/
   listen (serverFd, 1); /* Maximum pending connection length */
 
+  clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);
+  printf("ATTUATORE steer-by-wire: connected\n");
 
-
-
-
-  printf("ATTUATORE-SERVER sbw: wait client\n");
-  clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
-  printf("ATTUATORE-SERVER sbw: accept client\n");
-
-  //fcntl(clientFd,F_SETFL,O_NONBLOCK); //Rende la read non bloccante    //ELIMINARE: Da rimettere non bloccante
-  openFile("steer.log","w", &logS);
-  char data[10];
-
-  while (1) {/* Loop forever */ /* Accept a client connection */
-
-    //printf("ATTUATORE-SERVER sbw: wait to read something\n");
-
+  char data[30];
+  while(1) {
     if(readSocket(clientFd, data)){
-      //printf("ATTUATORE-SERVER sbw: leggo = '%s'\n", data);
-      action(pid_sterzata, data);
-    } else {
-      //printf("ATTUATORE-SERVER sbw: end to read socket\n");
-
-      fclose(logS);
-      close (clientFd); /* Close the socket */
-      exit (0);
-
+      write(pipeFd[WRITE], data, strlen(data)+1);
     }
-
   }
+}
 
+void writeLog() {
+  openFile("../log/steer.log", "w", &fileLog);
+
+  char socketData[30];
+  while(1) {
+    if(read(pipeFd[READ], socketData, 30) > 0){
+      kill(pidBs, SIGCONT);
+
+      for (int i = 0; i < 4; i++) {
+        fprintf(fileLog, "STO GIRANDO A %s\n", socketData);
+        fflush(fileLog);
+
+        sleep(1);
+      }
+
+      kill(pidBs, SIGSTOP);
+
+    } else {
+      fprintf(fileLog, "%s", "NO ACTION\n");
+      fflush(fileLog);
+
+      sleep(1);
+    }
+  }
+}
+
+void initPipe() {
+  status = pipe(pipeFd);
+  if(status != 0) {
+    printf("Pipe error\n");
+    exit(1);
+  }
+}
+
+void sigTermHandler() {
+  kill(pidWriter, SIGTERM);
+  fclose(fileLog);
+  kill(pidBs,SIGTERM);
+  exit(0);
 }

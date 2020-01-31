@@ -2,73 +2,92 @@
 #include<stdlib.h>
 #include<string.h>
 #include<unistd.h>
+
 #include <fcntl.h>
+
+#include<signal.h>
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#include "socketManager.h"
-#include "fileManager.h"
+#include "../lib/socketManager.h"
+#include "../lib/fileManager.h"
 
+#define SIGRESETPARK SIGINT
+#define PARKING_TIME 30
 
 int socketFd;
 
-FILE * logP; //assist.log descriptor
+pid_t pidEcu;
 
-//void sendEcu(unsigned char buffer);
+FILE *readFd;
+FILE *logFd;		//assist.log descriptor
 
-unsigned char generateReadRand(unsigned char buffer);
+char *startMode;
+int resetPark = 0;
 
+void init();
 void readSend();
 
-int main(){
+void sigTermHandler();
+void resetParkHandler();
 
-		printf("SENSORE pa: attivo\n");
+int main(int argc, char *argv[]){
+	pidEcu = getppid();
+	startMode = argv[1];
+	
+	signal(SIGTERM, sigTermHandler);
 
-		socketFd = connectClient("paSocket");
-	  printf("SENSORE pa: connection open\n");
+	init();		// connessione socket + apertura file
 
-		readSend();
+	readSend();
+    kill(pidEcu, SIGUSR1); 	// comunico ad ECU che ha finito
 
-		return 0;
-
+    pause();	// mi assicuro di terminare il processo con il relativo handler
 }
-
-unsigned char generateReadRand(unsigned char buffer){
-
-	int fd = open("/dev/urandom", O_RDONLY);
-	read(fd, &buffer, 4);
-	//buffer now contains the random data
-	close(fd);
-	return buffer;
-}
-
-/*void sendEcu(unsigned char buffer){
-	printf("Sto inviando alla ecu %.2x \n", buffer);
-}
-*/
 
 void readSend(){
-
-	openFile("assist.log","w", &logP);
-
+	signal(SIGRESETPARK, resetParkHandler);
 	unsigned char buffer[4];
-	int i=0;
 
-	while (i < 10){
-		sleep(1);
-		printf("Sto inviando alla ecu ");
-
-		for(int j=0; j<4; j++){
-			buffer[j] = generateReadRand(buffer[j]);
-			printf("%.2x",buffer[j]);
-			fprintf(logP , "%.2x", buffer[j]);
+	for(int i = 0; i < PARKING_TIME; i++){
+		if(resetPark) {
+			resetPark = 0;
+			i = 0;
 		}
+
+		fread(buffer, 1, 4, readFd);
 		writeSocket(socketFd, buffer);
-		fprintf(logP, "%s", "\n" );
-		printf("\n");
 
+	    for(int j=0; j < 4; j++){
+			fprintf(logFd, "%02X", buffer[j]);
+		}
+		fprintf(logFd, "\n");
 
-		i++;
+		sleep(1);
 	}
+}
+
+void init() {
+	socketFd = connectClient("paSocket");
+
+	if(strcmp(startMode, "NORMALE") == 0) {
+ 		openFile("/dev/urandom","r", &readFd);
+	} else {
+ 		openFile("../data/urandomARTIFICIALE.binary","r", &readFd);
+	}
+	openFile("../log/assist.log","w", &logFd);
+}
+
+void resetParkHandler() {
+	signal(SIGRESETPARK, resetParkHandler);
+	printf("---------------RESETTO-----------------\n");
+	resetPark = 1;
+}
+
+void sigTermHandler(){
+	fclose(readFd);
+	fclose(logFd);
+	exit(0);
 }

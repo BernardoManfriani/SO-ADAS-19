@@ -3,38 +3,48 @@
 #include<string.h>
 #include<unistd.h>
 
+#include<signal.h>
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#include "socketManager.h"
-#include "fileManager.h"
+#include "../lib/socketManager.h"
+#include "../lib/fileManager.h"
 
-int currentSpeed;
 int socketFd;
+long int lastLineRead;
 FILE *readFd;
 FILE *logFd;
 
+void init();
 void closeClient(int s);
 
 void readFile(FILE *fd,FILE *fc);
+void writeLastLineRead();
+void getLastLineRead();
+char *readLine(FILE *fp);
+
 
 int main() {
-  currentSpeed = 0;
-  printf("SENSORE fwc: attivo\n");
+  signal(SIGTERM, writeLastLineRead);     // dopo uno warning, salvo su utility.data il valore dell'ultima riga letta
 
-  socketFd = connectClient("fwcSocket");
-  printf("SENSORE fwc: connection open\n");
+  init();     // connesione ECU-SERVER + apertura files
 
-  openFile("frontCamera.data","r", &readFd);      // look: PROSSIMO PASSO - APRIRE FILE .data 1.LEGGERE ROBA E SCRIVERE SU LOG
-  openFile("camera.log","w", &logFd);
+  getLastLineRead();  // lastLineRead = valore dell'ultima riga letta
 
-  readFile(readFd, logFd);            // leggo file -> 1.Scrivo su fwcSocket 2.Scrivo su .log
+  readFile(readFd, logFd);            // leggo file -> 1.Scrivo su fwcSocket 2.Scrivo su camera.log
 
   closeClient(socketFd);
-  printf("%s\n", "SENSORE fwc: connection close");
 
   return 0;
+}
+
+void init() {
+  socketFd = connectClient("fwcSocket");
+
+  openFile("../data/frontCamera.data","r", &readFd);
+  openFile("../log/camera.log","w", &logFd);
 }
 
 void closeClient(int socketFd) {
@@ -42,10 +52,9 @@ void closeClient(int socketFd) {
 }
 
 void readFile(FILE *fd,FILE *fc){
-  char buf[20];               // look: 20 va è sufficiente?
+  char buf[10];               /// 10 è sufficiente poiché il massimo numero di caratteri è 8 più 1 carattere di terminazione 9 e una posizione in più di safe.
   char *res;
-  int i = 0;
-  while(i < 20) {
+  while(1) {
   	res=fgets(buf, 10, fd);
     size_t lastIndex = strlen(buf) - 1;
     buf[lastIndex] = '\0';
@@ -53,10 +62,45 @@ void readFile(FILE *fd,FILE *fc){
   	if(res==NULL){
   		break;
     }
-  	fprintf(fc, "%s", buf);		    // scrivo su file .log
-   	writeSocket(socketFd, buf);		// scrivo su socket fwc <--> ecu
+  	fprintf(fc, "%s\n", buf);		    // scrivo su file camera.log
+   	writeSocket(socketFd, buf);		// scrivo su socket fwcSocket
 
-    sleep(1);           // look: dovrà essere 10 secondi
-    i++;
+    sleep(10);
   }
+}
+
+void writeLastLineRead(){
+  FILE *fileUtility;
+  openFile("../data/utility.data", "w", &fileUtility);
+  lastLineRead = ftell(readFd);
+  fprintf(fileUtility, "%ld\n", lastLineRead);
+  fclose(fileUtility);
+  fclose(readFd);
+  exit(0);
+}
+
+
+void getLastLineRead() {
+  FILE *fileUtility;
+  openFile("../data/utility.data", "r", &fileUtility);
+  char *lineNumber;
+
+  lineNumber = readLine(fileUtility);
+  lastLineRead = atol(lineNumber);
+
+  fclose(fileUtility);
+  fseek(readFd, lastLineRead, SEEK_SET);
+}
+
+char* readLine(FILE *fp){   // Long signed integer Capable of containing at least [−2,147,483,647, +2,147,483,647]
+  char *lineBuffer = (char *)malloc(sizeof(char) * 10);
+  int count = 0;
+
+  char ch = getc(fp);
+  while ((ch != '\n') && (ch != EOF)) {
+    lineBuffer[count] = ch;
+    count++;
+    ch = getc(fp);
+  }
+    return lineBuffer;
 }

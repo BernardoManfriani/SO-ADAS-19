@@ -5,21 +5,18 @@
 
 #include<signal.h>
 
-//#include <sys/wait.h>
-
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
 #include <fcntl.h>
 
-#include "socketManager.h"
-#include "fileManager.h"
+#include "../lib/socketManager.h"
+#include "../lib/fileManager.h"
 
 #define DEFAULT_PROTOCOL 0
 #define READ 0
 #define WRITE 1
-
 
 int status;
 int pipeFd[2];
@@ -33,12 +30,10 @@ void createServer();
 void writeLog();
 
 int getAcceleration(char *socketData);
+void sigTermHandler();
 
-void lettorePipe();
 
 int main() {
-    printf("ATTUATORE tc: attivo\n");
-
     initPipe();
 
 	fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);	// rende la read su pipe non bloccante
@@ -48,12 +43,11 @@ int main() {
 		close(pipeFd[WRITE]);
 		writeLog();
 		close(pipeFd[READ]);
-    	printf("ATTUATORE tc: write logger TERMINO\n");
 	} else {				// father process listener on socket
-		close(pipeFd[READ]); 
+		signal(SIGTERM, sigTermHandler);
+
+		close(pipeFd[READ]);
         createServer();
-		close(pipeFd[WRITE]);
-   		printf("ATTUATORE tc: tc server TERMINO\n");
 	}
 
 	return 0;
@@ -79,18 +73,13 @@ void createServer() {
     listen (serverFd, 1); /* Maximum pending connection length */
 
     while (1) {/* Loop forever */ /* Accept a client connection */
-		printf("ATTUATORE-SERVER tc: wait client\n");
-
-		clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);	// bloccante
-		printf("ATTUATORE-SERVER tc: accept client\n");
+		clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);
+ 		printf("ATTUATORE throttle-control: connected\n");
 
         char data[30];
-		printf("ATTUATORE-SERVER tc: wait to read something\n");
         while(readSocket(clientFd, data)) {
             write(pipeFd[WRITE], data, strlen(data)+1);
         }
-
-		printf("ATTUATORE-SERVER tc: end to read socket\n");
 
         close (clientFd); /* Close the socket */
         exit (0); /* Terminate */
@@ -98,40 +87,34 @@ void createServer() {
 }
 
 void writeLog() {
-	char socketData[30];
-	openFile("throttle.log", "w", &fileLog);
+	openFile("../log/throttle.log", "w", &fileLog);
 
-	int x = 0;
-	while(x <15) {							// look: per ora leggo solo 15 volte dalla pipe
+	char socketData[30];
+	while(1) {
 		if(read(pipeFd[READ], socketData, 30) > 0){
 			deltaSpeed = getAcceleration(strdup(socketData));
 
 			while(deltaSpeed > 0) {
-			    printf("ATTUATORE tc: AUMENTO 5 => deltaSpeed = %d\n", deltaSpeed);
 			    fprintf(fileLog, "%s", "AUMENTO 5\n");
 				fflush(fileLog);
 
 				deltaSpeed = deltaSpeed - 5;
-				x = x+1;
 				sleep(1);
 			}
 
 		} else {
-			printf("ATTUATORE tc: NO ACTION\n");
 		    fprintf(fileLog, "%s", "NO ACTION\n");
 			fflush(fileLog);
 
-			x = x+1;
 			sleep(1);
 		}
 	}
 
-	fclose(fileLog);
 }
 
 int getAcceleration(char *socketData) {
-	char *accelerazione = strtok(socketData," ");			// look: prende comando
-	accelerazione = strtok(NULL," ");		// look: prende numero del comando
+	char *accelerazione = strtok(socketData," ");		// get comando
+	accelerazione = strtok(NULL," ");		// get numero comando
 
 	return atoi(accelerazione);
 }
@@ -142,4 +125,10 @@ void initPipe() {
 		printf("Pipe error\n");
 		exit(1);
 	}
+}
+
+void sigTermHandler() {
+	kill(pidWriter, SIGTERM);
+	fclose(fileLog);
+	exit(0);
 }
