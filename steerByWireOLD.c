@@ -18,44 +18,47 @@
 #define WRITE 1
 
 pid_t pidBs;
-pid_t pidWriter;
-
-int status;
-int pipeFd[2];
 
 FILE * fileLog;
 
-void initPipe();
 void createServer();
-
-void writeLog();
+void action(char *a);
 void sigTermHandler();
 
 
 int main(int argc, char *argv[]) {
-  initPipe();
-
-  fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);   // rende la read su pipe non bloccante
-
   pidBs = fork();
   if(pidBs == 0) {
       argv[0] = "./bs"; 
       execv(argv[0],argv);
-
   } else {
+    signal(SIGTERM, sigTermHandler);
+    createServer();
+  }
 
-    pidWriter = fork();
-    if(pidWriter == 0) {      // child process writer on brake.log file
-      close(pipeFd[WRITE]);
-      writeLog();
-      close(pipeFd[READ]);
+  return 0;
+}
 
-    } else {        // father process listener on socket
-      signal(SIGTERM, sigTermHandler);
+void action(char *data){
 
-      close(pipeFd[READ]);
-      createServer();
+  if (strcmp(data,"DESTRA") == 0 || strcmp(data, "SINISTRA") == 0){
+    kill(pidBs, SIGCONT);
+
+    for (int i = 0; i < 4; i++) {
+
+      fprintf(fileLog, "STO GIRANDO A %s\n", data);
+      fflush(fileLog);
+
+      sleep(1);
     }
+
+    kill(pidBs, SIGSTOP);
+  } else {
+    //printf("STEER LEGGE ALTRO\n");
+    fprintf(fileLog, "NO ACTION\n");
+    fflush(fileLog);
+    
+    sleep(1);
   }
 }
 
@@ -79,52 +82,20 @@ void createServer() {
   listen (serverFd, 1); /* Maximum pending connection length */
 
   clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);
-  printf("ATTUATORE steer-by-wire: connected\n");
+  printf("CLIENT-SERVER: sbwSocket connected\n");
 
-  char data[30];
-  while(1) {
+  openFile("../log/steer.log","w", &fileLog);
+  char data[10];
+
+  while (1) {
     if(readSocket(clientFd, data)){
-      write(pipeFd[WRITE], data, strlen(data)+1);
+      action(data);
     }
-  }
-}
-
-void writeLog() {
-  openFile("../log/steer.log", "w", &fileLog);
-
-  char socketData[30];
-  while(1) {
-    if(read(pipeFd[READ], socketData, 30) > 0){
-      kill(pidBs, SIGCONT);
-
-      for (int i = 0; i < 4; i++) {
-        fprintf(fileLog, "STO GIRANDO A %s\n", socketData);
-        fflush(fileLog);
-
-        sleep(1);
-      }
-
-      kill(pidBs, SIGSTOP);
-
-    } else {
-      fprintf(fileLog, "%s", "NO ACTION\n");
-      fflush(fileLog);
-
-      sleep(1);
-    }
-  }
-}
-
-void initPipe() {
-  status = pipe(pipeFd);
-  if(status != 0) {
-    printf("Pipe error\n");
-    exit(1);
   }
 }
 
 void sigTermHandler() {
-  kill(pidWriter, SIGTERM);
+  //signal(SIGTERM,SIG_DFL);
   fclose(fileLog);
   kill(pidBs,SIGTERM);
   exit(0);

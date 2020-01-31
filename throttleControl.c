@@ -48,7 +48,6 @@ int main() {
 
 		close(pipeFd[READ]);
         createServer();
-		close(pipeFd[WRITE]);
 	}
 
 	return 0;
@@ -75,16 +74,14 @@ void createServer() {
 
     while (1) {/* Loop forever */ /* Accept a client connection */
 		clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);
-		printf("CLIENT-SERVER: tcSocket connected\n");
+ 		printf("ATTUATORE throttle-control: connected\n");
 
         char data[30];
         while(readSocket(clientFd, data)) {
             write(pipeFd[WRITE], data, strlen(data)+1);
         }
 
-		printf("ATTUATORE-SERVER tc: close close tcSocket\n");
         close (clientFd); /* Close the socket */
-
         exit (0); /* Terminate */
     }
 }

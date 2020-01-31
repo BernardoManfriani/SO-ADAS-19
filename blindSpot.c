@@ -63,19 +63,17 @@ void sigContHandler() {
 }
 
 void readFromFile() {
-	int i = 0;
 	while(1) {
 		bytesRead = fread(data, 1, 8, readFd);
 		if (bytesRead == 0) {
-			perror("svc: errore in lettura");
+			perror("blind-spot: errore in lettura");
 			exit(1);
 		}
-		writeSocket(socketFd, data);		// scrivo su socket bs <--> ecu
+		writeSocket(socketFd, data);		// scrivo su socket bsSocket
 	  	writeRadarLog(logFd, data);
 		fflush(logFd);
 
 		usleep(500000);
-		i++;
 	}
 }
 

@@ -34,6 +34,7 @@ FILE *fileLog;
 
 void initPipe();
 void dangerHandler();
+void sigTermHandler();
 
 void createServer();
 void manageData(char *socketData);
@@ -45,10 +46,9 @@ int getDeceleration(char *socketData);
 int main() {
     pidEcu = getppid();
 
+    system("rm -f ../log/brake.log; touch ../log/brake.log");
 	openFile("../log/brake.log", "w", &fileLog);	// apro file - può arrivare un segnale di pericolo ancora prima di aver "toccato freno"
     initPipe();
-
-    signal(SIGDANGER, dangerHandler);
 
 	fcntl(pipeFd[READ], F_SETFL, O_NONBLOCK);	// rende la read su pipe non bloccante
 
@@ -58,22 +58,14 @@ int main() {
 		writeLog();
 		close(pipeFd[READ]);
 	} else {				// father process listener on socket
+	    signal(SIGDANGER, dangerHandler);
+	    signal(SIGTERM, sigTermHandler);
+
 		close(pipeFd[READ]);
         createServer();
-
-        wait(NULL);		// look: mettendo questo wait mi è stato possibile creare 2 soli bbw server, senza fare un while(1)
-		close(pipeFd[WRITE]);
 	}
 
 	return 0;
-}
-
-void dangerHandler() {
-    fprintf(fileLog, "ARRESTO AUTO\n");
-
-    fclose(fileLog);
-	kill(getpid(), SIGTERM);
-	// look: uccidere anche processo writer !?
 }
 
 void createServer() {
@@ -95,8 +87,9 @@ void createServer() {
     bind (serverFd, serverSockAddrPtr, serverLen);/*Create file*/
     listen (serverFd, 2); /* Maximum pending connection length */
 
-    for(int j = 0; j < 2; j++) {
+    while(1){
 		clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);
+ 		printf("ATTUATORE brake-by-wire: connected\n");
 
 		if (fork () == 0) {
 	        char data[30];
@@ -132,7 +125,7 @@ void writeLog() {
 	int bytesRead;
 	char socketData [30];
 
-	sleep(1);
+	// look: sleep(1);
 
 	while(1) {
 		if(read(pipeFd[READ], socketData, 30) > 0) {
@@ -156,7 +149,7 @@ void writeLog() {
 }
 
 void brakeTillStop(int speed) {
-	printf("RALLENTO:\n");
+	printf("Sto fermando il veicolo...\n");
 	while(speed > 0){
 		printf("speed: %d\n", speed);
 		speed = speed - 5;
@@ -164,7 +157,6 @@ void brakeTillStop(int speed) {
 		sleep(1);
 	}
 
-	printf("PARCHEGGIATO\n");
 	kill(pidEcu, SIGPARK);		// segnalo a ECU che ho rallentato fino a fermarmi
 }
 
@@ -182,4 +174,23 @@ void initPipe() {
 		printf("Pipe error\n");
 		exit(1);
 	}
+}
+
+void dangerHandler() {
+    fprintf(fileLog, "ARRESTO AUTO\n");
+
+    //printf(" ------------- pid = '%d'\n", getpid());
+    //fclose(fileLog);
+    //printf("BBW dangerHandler\n");
+	kill(getpid(), SIGTERM);
+  	//kill(pidWriter,SIGTERM);
+
+  	//printf("BBW ORA TERMINO\n");
+	//exit(0);
+}
+
+void sigTermHandler() {
+	fclose(fileLog);
+  	kill(pidWriter,SIGTERM);
+  	exit(0);
 }

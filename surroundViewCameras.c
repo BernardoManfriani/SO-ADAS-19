@@ -32,9 +32,6 @@ int main(int argc, char *argv[]){
 
 	readFromFile();
 
-	close(socketFd);
-
-	return 0;
 }
 
 void init() {
@@ -50,23 +47,19 @@ void init() {
 }
 
 void readFromFile() {
-
 	while(1) {
 		bytesRead = fread(data, 1, 16, readFd);
 		if (bytesRead == 0) {
-			perror("svc: errore in lettura");
+			perror("surround-view-cameras: errore in lettura");
 			exit(1);
 		}
 
-		writeSocket(socketFd, data);		// scrivo su socket svcSocket
+		writeSocket(socketFd, data);		// scrivo su svcSocket
 	  	writeCamerasLog(logFd, data);
 		fflush(logFd);
 
 		sleep(1);
 	}
-
-	fclose(readFd);
-	fclose(logFd);
 }
 
 void writeCamerasLog(FILE *logFd, unsigned char data[]) {
@@ -77,6 +70,7 @@ void writeCamerasLog(FILE *logFd, unsigned char data[]) {
 }
 
 void sigTermHandler(){
-  fclose(logFd);
-  exit(0);
+	fclose(readFd);
+	fclose(logFd);
+	exit(0);
 }

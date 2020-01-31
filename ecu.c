@@ -79,7 +79,7 @@ void creaComponente(pid_t pidSens, char *argv[]);
 void creaSensori();
 
 void creaServers();
-void creaServer(pid_t pidEcuServer, int fdSocketSensore, char *nomeSocketSensore);
+void creaServer(char *sensorName, pid_t pidEcuServer, int fdSocketSensore, char *nomeSocketSensore);
 
 void creaParkAssist();
 void creaSurroundViewCameras();
@@ -96,6 +96,8 @@ void decodeFfrData(unsigned char *data);
 void decodeBsData(unsigned char *data);
 void decodePaData(unsigned char *data);
 void decodeSvcData(unsigned char *data);
+
+void manageDanger();
 
 void ecuLogger();
 int getCurrentSpeed(char *);
@@ -265,9 +267,9 @@ void creaServers() {
 	close(pipe_ffr_data[READ]);
 	close(pipe_bs_data[READ]);
 
-	creaServer(pidFwcEcuServer, fwcSocketFd, "fwcSocket");
-	creaServer(pidFfrEcuServer, ffrSocketFd, "ffrSocket");
-	creaServer(pidBsEcuServer, bsSocketFd, "bsSocket");
+	creaServer("front-windshield-camera", pidFwcEcuServer, fwcSocketFd, "fwcSocket");
+	creaServer("forward-facing-radar", pidFfrEcuServer, ffrSocketFd, "ffrSocket");
+	creaServer("blind-spot", pidBsEcuServer, bsSocketFd, "bsSocket");
 
 	/* look: QUANDO CHIUDO PIPE ?!?!?!-------------------
 
@@ -276,7 +278,7 @@ void creaServers() {
 	close(pipe_bs_data[WRITE]);*/
 }
 
-void creaServer(pid_t pidEcuServer, int fdSocketSensore, char *nomeSocketSensore) {
+void creaServer(char *sensorName, pid_t pidEcuServer, int fdSocketSensore, char *nomeSocketSensore) {
 	int clientFd;
 
 	pidEcuServer = fork();
@@ -289,7 +291,7 @@ void creaServer(pid_t pidEcuServer, int fdSocketSensore, char *nomeSocketSensore
 		listen (fdSocketSensore, 1);	/* Maximum pending connection length */
 
 		clientFd = accept (fdSocketSensore, clientSockAddrPtr, &clientLen);	// Accept a client connection
-		printf("CLIENT-SERVER: %s connected\n", nomeSocketSensore);
+		printf("SENSORE %s: connected\n", sensorName);
 
 		char data[MAX_DATA_SIZE];
 		while (readSocket(clientFd, data)) {
@@ -304,11 +306,9 @@ void creaServer(pid_t pidEcuServer, int fdSocketSensore, char *nomeSocketSensore
 			} else if(strcmp(nomeSocketSensore, "svcSocket") == 0){
 				decodeSvcData(data);
 			} 
-		}
+		};
 
-		printf("ECU-SERVER: close %s\n", nomeSocketSensore);
 		close (clientFd); /* Close the socket */
-
 		exit (0); /* Terminate */
 	}
 }
@@ -322,16 +322,12 @@ void processFwcData(char *data) {
 		writeSocket(sbwSocketFd, command);				// scrivo a steer-by-wire
 
 	} else if(strcmp(data, "PERICOLO") == 0) {
-		printf("ECU-CLIENT: leggo PERICOLO\n");
-		writeSocket(sbwSocketFd, data);
+		printf("!!! PERICOLO RILEVATO !!!\n");
 
 		currentSpeed = 0;
-		kill(pidBbw, SIGDANGER);	// invio segnale di pericolo a break by wire
-		kill(pidHmi, SIGDANGER);	// invio segnale di pericolo a HMI
+		manageDanger();
 
 	} else {	// viene letto un numero
-        writeSocket(sbwSocketFd, command); // Se è un numero quello che leggo da frontcamera allora scrivo il valore
-
 		int nextSpeed = atoi(data);
 		int deltaSpeed;
         if(nextSpeed > currentSpeed) {
@@ -372,8 +368,7 @@ void decodeFfrData(unsigned char *data) {
 
     		if(data[j] == errValues[i] && data[j+1] == errValues[i+1]){
 				printf("ERROR: forward-facing-radar sequenza maligna trovata\n");
-				kill(pidBbw, SIGDANGER); 	// invio segnale di pericolo a brake by wire
-				kill(pidHmi, SIGDANGER);	// invio segnale di pericolo a HMI
+				manageDanger();
     		}
     	}
     }
@@ -387,8 +382,7 @@ void decodeBsData(unsigned char *data) {
 
     		if(data[j] == errValues[i] && data[j+1] == errValues[i+1]){
 				printf("ERROR: blind-spot sequenza maligna trovata\n");
-				kill(pidBbw, SIGDANGER); 	// invio segnale di pericolo a brake by wire
-				kill(pidHmi, SIGDANGER);	// invio segnale di pericolo a HMI
+				manageDanger();
     		}
 		}
     }
@@ -399,8 +393,6 @@ void decodePaData(unsigned char *data) {
 
     for(int i = 0; i < 10; i=i+2) {
 		for(int j = 0; j < 4; j=j+2) {
-       		printf("PA CONFRONTO: %02X%02X - ", data[j],data[j+1]);
-       		printf("%02X%02X\n", errValues[i],errValues[i+1]);
 
     		if(data[j] == errValues[i] && data[j+1] == errValues[i+1]){
 				printf("ERROR: park-assist sequenza maligna trovata\n");
@@ -421,6 +413,17 @@ void decodeSvcData(unsigned char *data) {
     		}
 		}
     }
+}
+
+void manageDanger() {
+	kill(pidBbw, SIGDANGER);	// invio segnale di pericolo a break by wire
+
+	// Con questi due ccmandi sono "SICURO" di scrivere almeno al primo PERICOLO -> 'ARRESTO AUTO' & di salvare l'ultima
+	// riga letta da front-windshield-camera
+	kill(pidFwc, SIGTERM);	// invio segnale di pericolo a FWC
+	sleep(1);			// look: GUARDAREEEEE --------------------- NON RIESCO A FARE WAIT PID
+
+	kill(pidHmi, SIGDANGER);	// invio segnale di pericolo a HMI
 }
 
 void ecuLogger() {
@@ -473,16 +476,16 @@ void parkingHandler() {
     kill(pidSvc, SIGSTOP);		// Avvierò componente, nel momento in cui velocità == 0
 
 	close(pipe_pa_data[READ]);
-	creaServer(pidPaEcuServer, paSocketFd, "paSocket");			// creo ECU-SERVER <--> PARK ASSIST CLIENT
+	creaServer("park-assist", pidPaEcuServer, paSocketFd, "paSocket");			// creo ECU-SERVER <--> PARK ASSIST CLIENT
 
 
-	creaServer(pidSvcEcuServer, svcSocketFd, "svcSocket");			// creo ECU-SERVER <--> PARK ASSIST CLIENT
+	creaServer("surround-view-cameras", pidSvcEcuServer, svcSocketFd, "svcSocket");			// creo ECU-SERVER <--> PARK ASSIST CLIENT
 
 	// look: GUARDA PRIMO FACOLTATIVO PAG 4 => DOVREI KILLARE GLI ALTRI ATTUATORI tc, sbw e SENSORI
 	// mi è successo che nel mentro che stava frenando (da 50 a 0), ffr ha trovato una sequenza maligna e quindi il sistema si è
 	// bloccato, chiedendomi di inserire INIZIO nuovamente (sfanculando praticamente il parcheggio)
-	//kill(pidTc, SIGTERM);
-	//kill(pidSbw, SIGTERM);
+	kill(pidTc, SIGTERM);
+	kill(pidSbw, SIGTERM);
 
 	kill(pidFwc, SIGTERM);
 }
@@ -490,6 +493,7 @@ void parkingHandler() {
 void endParkingHandler() {
 	signal(SIGPARK, endProgram);
 
+	printf("\nparcheggio in corso...\n");
 	// Arrivati a questo punto, velocità = 0, Central ECU attiva Park assist ultrasonic sensors e look: Surround view cameras
     kill(pidPa, SIGCONT);
     kill(pidSvc, SIGCONT);
@@ -516,7 +520,8 @@ void creaSurroundViewCameras() {
 }
 
 void endProgram() {
-	kill(pidSvc, SIGTERM);		// hmi chiuderà tutti i processi relativi a questa simulazione
+	kill(pidSvc, SIGTERM);		// park-assist termina => termina anche svc
+
 	kill(pidHmi, SIGPARK);		// hmi chiuderà tutti i processi relativi a questa simulazione
 }
 
