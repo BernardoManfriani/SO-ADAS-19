@@ -34,7 +34,7 @@ pid_t pidHmi, pidEcu;
 // PID ATTUATORI
 pid_t pidTc, pidBbw, pidSbw;
 
-// PID SENSORI - look: non considero pidSvc, pidPa perchè processi attivati al bisogno e non all'avvio del sistema (?)
+// PID SENSORI
 pid_t pidFwc, pidFfr, pidPa, pidSvc;
 
 // PID ECU-CLIENTS  - clienti del socket aperto con gli attuatori
@@ -46,7 +46,7 @@ pid_t pidFwcEcuServer, pidFfrEcuServer, pidPaEcuServer, pidSvcEcuServer, pidBsEc
 
 // ========================== PIPE ==========================
 // PIPE - da ECU-SERVER a ECU-CLIENT
-int pipe_fwc_data[2], pipe_ffr_data[2], pipe_bs_data[2], pipe_pa_data[2];
+int pipe_fwc_data[2], pipe_ffr_data[2], pipe_bs_data[2];
 
 // PIPE per comunicazione con hmi
 int pipe_ecu_logger[2];
@@ -121,16 +121,12 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
-void init() {		// inizializza le pipe------- look: SBAGLIATO facendo cosi tutti i processi hanno tutte le pipe aperte
-					// Pero se non lo metto in start ECU SERVER e ECU CLIENT non hanno la struttura dati in comune
-					// Quindi se si inizializzano le pipe qui, bisogna preoccuparci nei vari processi di chiudere le pipe che non si usano
-
+void init() {		// inizializza le pipe e struttura dati socket
 	currentSpeed = 0;
 
 	pipe(pipe_fwc_data);
 	pipe(pipe_ffr_data);
 	pipe(pipe_bs_data);
-	pipe(pipe_pa_data);
 	pipe(pipe_ecu_logger);
 
 	serverSockAddrPtr = (struct sockaddr*) &serverUNIXAddress;
@@ -158,8 +154,8 @@ void startEcuHandler() {
 
 void creaSensori() {
 	char *argv[3];
-	argv[1] = startMode;			// look: viene passato a tutti i sensori => noi lo utilizzeremo solo dove necessario
-	argv[2] = NULL;			// look: ultimo elemento deve essere un null pointer
+	argv[1] = startMode;
+	argv[2] = NULL;
 
 	argv[0] = "./fwc";
 	pidFwc = fork();
@@ -172,8 +168,8 @@ void creaSensori() {
 
 void creaAttuatori() {
 	char *argv[3];
-	argv[1] = startMode;			// look: viene passato a tutti i sensori => noi lo utilizzeremo solo dove necessario
-	argv[2] = NULL;			// look: ultimo elemento deve essere un null pointer
+	argv[1] = startMode;
+	argv[2] = NULL;
 
     argv[0] = "./tc";
     pidTc = fork();
@@ -183,7 +179,7 @@ void creaAttuatori() {
     pidBbw = fork();
 	creaComponente(pidBbw, argv);			// Attuatore brake by wire*/
 
-    argv[0] = "./sbw";					// look: non funziona steer by wire - non mi legge null => non stampa NO ACTION
+    argv[0] = "./sbw";
     pidSbw = fork();
 	creaComponente(pidSbw, argv);			// Attuatore steer by wire*/
 }
@@ -270,12 +266,6 @@ void creaServers() {
 	creaServer("front-windshield-camera", pidFwcEcuServer, fwcSocketFd, "fwcSocket");
 	creaServer("forward-facing-radar", pidFfrEcuServer, ffrSocketFd, "ffrSocket");
 	creaServer("blind-spot", pidBsEcuServer, bsSocketFd, "bsSocket");
-
-	/* look: QUANDO CHIUDO PIPE ?!?!?!-------------------
-
-	close(pipe_fwc_data[WRITE]);
-	close(pipe_ffr_data[WRITE]);
-	close(pipe_bs_data[WRITE]);*/
 }
 
 void creaServer(char *sensorName, pid_t pidEcuServer, int fdSocketSensore, char *nomeSocketSensore) {
@@ -313,6 +303,26 @@ void creaServer(char *sensorName, pid_t pidEcuServer, int fdSocketSensore, char 
 	}
 }
 
+void ecuLogger() {
+	FILE *ecuLogFd;
+	openFile("../log/ECU.log","a", &ecuLogFd);			// "a": open file for appending
+
+	char ecuCommand[MAX_DATA_SIZE];
+	int updatedSpeed;
+	while(readPipe(pipe_ecu_logger[READ], ecuCommand)){
+		char receivedSpeed[20];
+		sprintf(receivedSpeed, "%s", ecuCommand);
+
+		if((updatedSpeed = getCurrentSpeed(receivedSpeed)) > -1){		// E' stato letto un numero, accelero/freno
+			currentSpeed = updatedSpeed;
+		} else {
+			fprintf(ecuLogFd, "%s\n", ecuCommand);			// scrivo su ECU.log
+			fflush(ecuLogFd);
+		}
+	}
+}
+
+										// ====== PROCESS SENSOR DATA ====== //
 void processFwcData(char *data) {
 	char command[20];
 	strcpy(command, "NESSUN COMANDO");		// init command
@@ -418,45 +428,14 @@ void decodeSvcData(unsigned char *data) {
 void manageDanger() {
 	kill(pidBbw, SIGDANGER);	// invio segnale di pericolo a break by wire
 
-	// Con questi due ccmandi sono "SICURO" di scrivere almeno al primo PERICOLO -> 'ARRESTO AUTO' & di salvare l'ultima
-	// riga letta da front-windshield-camera
 	kill(pidFwc, SIGTERM);	// invio segnale di pericolo a FWC
-	sleep(1);			// look: GUARDAREEEEE --------------------- NON RIESCO A FARE WAIT PID
+	sleep(1);
 
 	kill(pidHmi, SIGDANGER);	// invio segnale di pericolo a HMI
+	printf("Veicolo arrestato\nPremi INIZIO per ripartire\n\n");
 }
 
-void ecuLogger() {
-	FILE *ecuLogFd;
-	openFile("../log/ECU.log","a", &ecuLogFd);			// "a": open file for appending
-
-	char ecuCommand[MAX_DATA_SIZE];
-	int updatedSpeed;
-	while(readPipe(pipe_ecu_logger[READ], ecuCommand)){
-		char receivedSpeed[20];
-		sprintf(receivedSpeed, "%s", ecuCommand);
-
-		if((updatedSpeed = getCurrentSpeed(receivedSpeed)) > -1){		// E' stato letto un numero, accelero/freno
-			currentSpeed = updatedSpeed;
-		} else {
-			fprintf(ecuLogFd, "%s\n", ecuCommand);			// scrivo su ECU.log
-			fflush(ecuLogFd);
-		}
-	}
-}
-
-
-int getCurrentSpeed(char *fullCommand) {
-	char *speed = strtok (fullCommand," ");
-
-	if(strcmp(speed, "UPDATE") == 0){      // prima parola del comando == "UPDATE"
-		speed = strtok (NULL, " ");
-		return atoi(speed);
-	} else {
-		return -1;
-	}
-}
-
+										// ====== PARKING ROUTINES ====== //
 void parkingHandler() {
 	signal(SIGPARK, endParkingHandler);			// signal per ricevere segnale fino parcheggio da parte di brake by wire
 
@@ -475,26 +454,22 @@ void parkingHandler() {
 	creaSurroundViewCameras();
     kill(pidSvc, SIGSTOP);		// Avvierò componente, nel momento in cui velocità == 0
 
-	close(pipe_pa_data[READ]);
 	creaServer("park-assist", pidPaEcuServer, paSocketFd, "paSocket");			// creo ECU-SERVER <--> PARK ASSIST CLIENT
+	creaServer("surround-view-cameras", pidSvcEcuServer, svcSocketFd, "svcSocket");		// creo ECU-SERVER <--> SURROUND-VIEW-CAMERAS CLIENT
 
-
-	creaServer("surround-view-cameras", pidSvcEcuServer, svcSocketFd, "svcSocket");			// creo ECU-SERVER <--> PARK ASSIST CLIENT
-
-	// look: GUARDA PRIMO FACOLTATIVO PAG 4 => DOVREI KILLARE GLI ALTRI ATTUATORI tc, sbw e SENSORI
-	// mi è successo che nel mentro che stava frenando (da 50 a 0), ffr ha trovato una sequenza maligna e quindi il sistema si è
-	// bloccato, chiedendomi di inserire INIZIO nuovamente (sfanculando praticamente il parcheggio)
+	// Termino componenti non utili al parcheggio
 	kill(pidTc, SIGTERM);
 	kill(pidSbw, SIGTERM);
 
+	kill(pidFfr, SIGTERM);
 	kill(pidFwc, SIGTERM);
 }
 
 void endParkingHandler() {
 	signal(SIGPARK, endProgram);
-
 	printf("\nparcheggio in corso...\n");
-	// Arrivati a questo punto, velocità = 0, Central ECU attiva Park assist ultrasonic sensors e look: Surround view cameras
+
+	// Arrivati a questo punto, velocità = 0, Central ECU attiva Park assist ultrasonic sensors e Surround view cameras
     kill(pidPa, SIGCONT);
     kill(pidSvc, SIGCONT);
 }
@@ -525,7 +500,7 @@ void endProgram() {
 	kill(pidHmi, SIGPARK);		// hmi chiuderà tutti i processi relativi a questa simulazione
 }
 
-
+										// ====== UTILITY ====== //
 int readPipe(int pipeFd, char *data) {
 	int n;
 	do { /* Read characters until ’\0’ or end-of-input */
@@ -533,4 +508,15 @@ int readPipe(int pipeFd, char *data) {
 	} while (n > 0 && *data++ != '\0');
 
 	return (n > 0);
+}
+
+int getCurrentSpeed(char *fullCommand) {
+	char *speed = strtok (fullCommand," ");
+
+	if(strcmp(speed, "UPDATE") == 0){      // prima parola del comando == "UPDATE"
+		speed = strtok (NULL, " ");
+		return atoi(speed);
+	} else {
+		return -1;
+	}
 }

@@ -18,6 +18,7 @@
 #define PARKING_TIME 30
 
 int socketFd;
+int parkTime = 30;
 
 pid_t pidEcu;
 
@@ -57,6 +58,9 @@ void readSend(){
 			i = 0;
 		}
 
+	    if(parkTime % 5 == 0) printf("remaining time: %dsec\n", parkTime);
+	    parkTime = parkTime - 1;
+
 		fread(buffer, 1, 4, readFd);
 		writeSocket(socketFd, buffer);
 
@@ -82,8 +86,9 @@ void init() {
 
 void resetParkHandler() {
 	signal(SIGRESETPARK, resetParkHandler);
-	printf("---------------RESETTO-----------------\n");
+	printf("reset procedura di parcheggio...\n");
 	resetPark = 1;
+	parkTime = 30;
 }
 
 void sigTermHandler(){

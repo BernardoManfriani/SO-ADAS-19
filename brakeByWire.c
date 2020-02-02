@@ -87,9 +87,11 @@ void createServer() {
     bind (serverFd, serverSockAddrPtr, serverLen);/*Create file*/
     listen (serverFd, 2); /* Maximum pending connection length */
 
+    int server = 0;
     while(1){
 		clientFd = accept (serverFd, clientSockAddrPtr, &clientLen);
- 		printf("ATTUATORE brake-by-wire: connected\n");
+ 		if(server == 0) printf("ATTUATORE brake-by-wire: connected\n");
+ 		server++;
 
 		if (fork () == 0) {
 	        char data[30];
@@ -123,10 +125,8 @@ void manageData(char *socketData) {
 
 void writeLog() {
 	int bytesRead;
+	sleep(1);
 	char socketData [30];
-
-	// look: sleep(1);
-
 	while(1) {
 		if(read(pipeFd[READ], socketData, 30) > 0) {
 			char *command = strtok(strdup(socketData), " ");	// Passo come argomento un duplicato della stringa
@@ -179,14 +179,7 @@ void initPipe() {
 void dangerHandler() {
     fprintf(fileLog, "ARRESTO AUTO\n");
 
-    //printf(" ------------- pid = '%d'\n", getpid());
-    //fclose(fileLog);
-    //printf("BBW dangerHandler\n");
 	kill(getpid(), SIGTERM);
-  	//kill(pidWriter,SIGTERM);
-
-  	//printf("BBW ORA TERMINO\n");
-	//exit(0);
 }
 
 void sigTermHandler() {

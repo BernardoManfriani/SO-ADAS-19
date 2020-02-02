@@ -91,7 +91,7 @@ void createServer() {
 
 void writeLog() {
   openFile("../log/steer.log", "w", &fileLog);
-
+  sleep(1);
   char socketData[30];
   while(1) {
     if(read(pipeFd[READ], socketData, 30) > 0){

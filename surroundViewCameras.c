@@ -43,7 +43,7 @@ void init() {
  		openFile("../data/urandomARTIFICIALE.binary","r", &readFd);
 	}
 
- 	openFile("../log/radar.log","w", &logFd);
+ 	openFile("../log/cameras.log","w", &logFd);
 }
 
 void readFromFile() {

@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
 	
 	startMode = argv;
     if (argc < 2 || (strcmp(argv[1], "NORMALE") != 0 && strcmp(argv[1], "ARTIFICIALE") != 0)) {
-		printf("Dichiarare modalità avvio: NORMALE - ARTIFICIALE\n");
+		printf("! Dichiarare modalità avvio: NORMALE | ARTIFICIALE !\n");
 		exit(1);
 	}
 
@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
     	pidOutputProcess = fork();
     	if(pidOutputProcess == 0){	// Tutti i comandi inviati dalla Central ECU a qualunque componente sono inseriti in un file 
     								// di log ECU.log e stampati a video tramite la HMI
-    		system("rm -f ../data/utility.data; touch ./../data/utility.data");
+    		system("rm -f ../data/utility.data; touch ../data/utility.data");
     		system("rm -f ../log/ECU.log; touch ../log/ECU.log; gnome-terminal -- sh -c \"echo HMI OUTPUT:; tail -F ../log/ECU.log; bash\"");
 
     	} else {
@@ -61,7 +61,6 @@ int main(int argc, char *argv[]) {
 	    	signal(SIGINT, sigEndParkHandler);		// premere ctrl+c fa chiudere tutti i processi
 
 	        start();
-	        wait(NULL);			// look: aspetta finisca il processo figlio -------------- PROVARE A COMMMENTARE RIGA
 	}
 
     return 0;
@@ -77,7 +76,7 @@ void start(){
 			if(started == 0) {
 				if(strcmp(input, "INIZIO\n") == 0) {
 					printf("Veicolo avviato\n");
-					kill(ecuPid, SIGSTART);					// look: ECU avviata solamente una volta scritto INIZIO
+					kill(ecuPid, SIGSTART);
 					started = 1;
 				} else if (strcmp(input, "PARCHEGGIO\n") == 0) {
 					printf("Prima di poter parcheggiare devi avviare il veicolo.\nDigita INIZIO per avviare il veicolo.\n\n");
@@ -86,7 +85,6 @@ void start(){
 				}
 			} else {    // Una volta avviata la macchina, concesso solo parcheggio
 				if(strcmp(input, "PARCHEGGIO\n") == 0) {
-					printf("Sto fermando il veicolo...\n");
 					kill(ecuPid, SIGPARK);	// durante parcheggio kill ecu process 
 					started = 0;
 				} else {
@@ -114,7 +112,6 @@ void dangerHandler() {
         exit(0);
     }
 
-	printf("Macchina arrestata\nPremi INIZIO per ripartire\n\n");
 	started = 0;
 }
 
