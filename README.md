@@ -1,4 +1,4 @@
 # SO-ADAS-19-20
 Advanced Driver Assistance Systems
 
-Qua l'elaborato descrittivo riguardante questo sistema di simulazione.
+L'elaborato descrittivo riguardante il simulatore di guida autonoma è nel pdf RelazioneProgetto.pdf.
