@@ -5,15 +5,8 @@
 
 #include<signal.h>
 
-#include "socketManager.h"
-
-void init();
-
-void sigStopHandler();
-void sigContHandler();
-
-void readFromFile();
-void writeRadarLog(FILE *, unsigned char data[]);
+#include "../lib/socketManager.h"
+#include "../lib/fileManager.h"
 
 FILE *readFd;
 FILE *logFd;
@@ -24,12 +17,20 @@ int bytesRead;
 
 char *startMode;
 
+void init();
+
+void sigTermHandler();
+void sigStopHandler();
+void sigContHandler();
+
+void readFromFile();
+void writeRadarLog(FILE *, unsigned char data[]);
+
 
 int main(int argc, char *argv[]){
-	printf("SENSORE bs: attivo\n");
-
 	startMode = argv[1];
 
+	signal(SIGTERM, sigTermHandler);
 	init();
 
 	while(1) {
@@ -37,24 +38,18 @@ int main(int argc, char *argv[]){
 		pause();
 	}
 
-	close(socketFd);
-	fclose(readFd);
-	fclose(logFd);
-
-	return 0;
 }
 
 void init() {
+	socketFd = connectClient("bsSocket");
+
 	if(strcmp(startMode, "NORMALE") == 0) {
-		readFd = fopen("/dev/urandom", "r");		// look: controllare se errore in apertura file
+ 		openFile("/dev/urandom","r", &readFd);
 	} else {
-		readFd = fopen("urandomARTIFICIALE.binary", "r");
+ 		openFile("../data/urandomARTIFICIALE.binary","r", &readFd);
 	}
 
-	logFd = fopen("spot.log", "w");
-
-	socketFd = connectClient("bsSocket");
-	printf("SENSORE bs: connection open\n");
+	openFile("../log/spot.log","w", &logFd);
 }
 
 void sigStopHandler() {
@@ -68,19 +63,17 @@ void sigContHandler() {
 }
 
 void readFromFile() {
-	int i = 0;
 	while(1) {
 		bytesRead = fread(data, 1, 8, readFd);
 		if (bytesRead == 0) {
-			perror("svc: errore in lettura");
+			perror("blind-spot: errore in lettura");
 			exit(1);
 		}
-		writeSocket(socketFd, data);		// scrivo su socket bs <--> ecu
+		writeSocket(socketFd, data);		// scrivo su socket bsSocket
 	  	writeRadarLog(logFd, data);
 		fflush(logFd);
 
 		usleep(500000);
-		i++;
 	}
 }
 
@@ -89,4 +82,10 @@ void writeRadarLog(FILE *logFd, unsigned char data[]) {
         fprintf(logFd, "%02X", data[i]);
     }
     fprintf(logFd, "\n");
+}
+
+void sigTermHandler(){
+	fclose(readFd);
+	fclose(logFd);
+	exit(0);
 }
