@@ -150,6 +150,8 @@ void start() {
 
 void startEcuHandler() {
 	signal(SIGPARK, parkingHandler);	// signal triggerata dopo inserimento comando PARCHEGGIO
+
+	signal(SIGINT, endProgram);	// signal triggerata dopo inserimento comando PARCHEGGIO
 }
 
 void creaSensori() {
@@ -225,6 +227,7 @@ void fwcDataManager(pid_t pidEcuClientFwcManager){
 		while(read(pipe_fwc_data[READ], data, MAX_DATA_SIZE)){
 			processFwcData(data);
 		}
+
     }
 }
 
@@ -336,6 +339,9 @@ void processFwcData(char *data) {
 
 		currentSpeed = 0;
 		manageDanger();
+
+	} else if(strcmp(data, "") == 0) {	// fwc arriva a fine file frontcamera.data
+		kill(pidHmi, SIGPARK); 
 
 	} else {	// viene letto un numero
 		int nextSpeed = atoi(data);
